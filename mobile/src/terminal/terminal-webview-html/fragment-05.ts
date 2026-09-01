@@ -137,6 +137,7 @@ export const TERMINAL_HTML_FRAGMENT_05 = `  ${TERMINAL_REFLOW_JS}
     } else if (msg.type === 'write') {
       write(msg.data);
     } else if (msg.type === 'clear') {
+      resetDoubleTapSwipe();
       terminalGeneration++;
       resetWriteQueue(); resumeTerminalDataReplyAuthority(); // Why: clear drops the replay boundary.
       statusDotPendingSelector = false;
