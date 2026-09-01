@@ -21,6 +21,7 @@ export function useMobileSessionPresentation(scope: MobileSessionBulkCloseModel)
     creatingBrowser,
     creatingMarkdown,
     keyboardHeight,
+    terminalKeyboardResizeEnabled,
     terminalKeyboardMetrics,
     toastOpacityRef,
     hostEndpoint,
@@ -76,11 +77,13 @@ export function useMobileSessionPresentation(scope: MobileSessionBulkCloseModel)
         ? Math.max(0, keyboardHeight - insets.bottom)
         : keyboardHeight
       : 0
-  const activeTerminalKeyboardLift = computeActiveTerminalKeyboardLift({
-    keyboardLift,
-    metrics: activeHandle ? terminalKeyboardMetrics.get(activeHandle) : undefined,
-    terminalFrameHeight: terminalFrameHeightRef.current
-  })
+  const activeTerminalKeyboardLift = terminalKeyboardResizeEnabled
+    ? 0
+    : computeActiveTerminalKeyboardLift({
+        keyboardLift,
+        metrics: activeHandle ? terminalKeyboardMetrics.get(activeHandle) : undefined,
+        terminalFrameHeight: terminalFrameHeightRef.current
+      })
   const toastAnimatedStyle = {
     opacity: toastOpacityRef.current,
     transform: [{ translateY: -keyboardLift }]

@@ -67,7 +67,8 @@ export function MobileSessionCommandDock({ controller }: { controller: MobileSes
     activeMarkdownTab,
     activeFileTab,
     activeBrowserTab,
-    keyboardLift
+    keyboardLift,
+    terminalKeyboardResizeEnabled
   } = controller
   return (
     !activeMarkdownTab &&
@@ -77,7 +78,10 @@ export function MobileSessionCommandDock({ controller }: { controller: MobileSes
       <View
         style={[
           styles.commandDock,
-          { paddingBottom: insets.bottom, transform: [{ translateY: -keyboardLift }] }
+          {
+            paddingBottom: insets.bottom + (terminalKeyboardResizeEnabled ? keyboardLift : 0),
+            transform: [{ translateY: terminalKeyboardResizeEnabled ? 0 : -keyboardLift }]
+          }
         ]}
       >
         {/* Accessory keys */}
