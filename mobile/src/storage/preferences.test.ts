@@ -13,6 +13,7 @@ import {
   loadPushNotificationsEnabled,
   loadTerminalKeyboardResizeEnabled,
   loadTerminalAutocompleteEnabled,
+  loadTerminalDoubleTapTabEnabled,
   loadTerminalLinkOpenMode,
   readPushNotificationsPreference,
   readDisabledTerminalLiveInputHandlesPreference,
@@ -21,6 +22,7 @@ import {
   savePushNotificationsEnabled,
   saveTerminalKeyboardResizeEnabled,
   saveTerminalAutocompleteEnabled,
+  saveTerminalDoubleTapTabEnabled,
   saveTerminalLinkOpenMode
 } from './preferences'
 import {
@@ -381,6 +383,30 @@ describe('terminal keyboard resize preference', () => {
 
     await saveTerminalKeyboardResizeEnabled(false)
     expect(AsyncStorage.setItem).toHaveBeenCalledWith('orca:terminalKeyboardResizeEnabled', 'false')
+  })
+})
+
+describe('terminal double-tap Tab preference', () => {
+  beforeEach(() => {
+    vi.mocked(AsyncStorage.getItem).mockReset()
+    vi.mocked(AsyncStorage.setItem).mockReset()
+  })
+
+  it('defaults to disabled when unset or unreadable', async () => {
+    vi.mocked(AsyncStorage.getItem).mockResolvedValue(null)
+    await expect(loadTerminalDoubleTapTabEnabled()).resolves.toBe(false)
+
+    vi.mocked(AsyncStorage.getItem).mockRejectedValue(new Error('storage unavailable'))
+    await expect(loadTerminalDoubleTapTabEnabled()).resolves.toBe(false)
+  })
+
+  it('loads and persists the selected value', async () => {
+    vi.mocked(AsyncStorage.getItem).mockResolvedValue('true')
+    await expect(loadTerminalDoubleTapTabEnabled()).resolves.toBe(true)
+    expect(AsyncStorage.getItem).toHaveBeenCalledWith('orca:terminalDoubleTapTabEnabled')
+
+    await saveTerminalDoubleTapTabEnabled(true)
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith('orca:terminalDoubleTapTabEnabled', 'true')
   })
 })
 

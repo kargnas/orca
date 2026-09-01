@@ -35,6 +35,8 @@ export function MobileSessionActiveContent({
     terminalFrameHeightRef,
     setTerminalFrameWidth,
     handleTerminalTap,
+    handleTerminalPlainTap,
+    cancelPendingTap,
     browserScreencastSupported,
     showToast,
     nativeChatSendError,
@@ -227,6 +229,8 @@ export function MobileSessionActiveContent({
           onTerminalInput={handleTerminalInput}
           onTerminalQueryReply={handleTerminalQueryReply}
           onTerminalTap={handleTerminalTap}
+          onTerminalPlainTap={handleTerminalPlainTap}
+          onTerminalPlainTapCancelled={cancelPendingTap}
           onFileTap={handleFileTap}
           onOpenUrl={handleTerminalOpenUrl}
         />

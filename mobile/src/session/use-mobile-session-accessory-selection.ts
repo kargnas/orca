@@ -13,6 +13,7 @@ import type {
   TerminalModes
 } from '../terminal/terminal-webview-contract'
 import type { createTerminalLiveAccessoryInput } from '../terminal/terminal-live-accessory-input'
+import { useTerminalDoubleTapTab } from '../terminal/use-terminal-double-tap-tab'
 import { clearTerminalLiveInputFocusTimer } from '../terminal/terminal-live-input'
 import { getRepoIdFromMobileWorktreeId } from './mobile-session-route-helpers'
 import type { RuntimeRepoSummary } from './mobile-session-route-types'
@@ -20,7 +21,10 @@ import type { MobileSessionTerminalInputModel } from './use-mobile-session-termi
 
 export function useMobileSessionAccessorySelection(scope: MobileSessionTerminalInputModel) {
   const {
+    hostId,
     worktreeId,
+    connState,
+    activeHandle,
     isFloatingWorkspaceRoute,
     client,
     setTerminalKeyboardMetrics,
@@ -48,6 +52,18 @@ export function useMobileSessionAccessorySelection(scope: MobileSessionTerminalI
   const handleAccessoryKeyRef = useRef(handleAccessoryKey)
   // react-doctor-disable-next-line react-doctor/no-ref-current-in-render
   handleAccessoryKeyRef.current = handleAccessoryKey
+  const { cancelPendingTap, shouldSendTabForTap } = useTerminalDoubleTapTab(
+    activeHandle,
+    JSON.stringify([hostId, worktreeId, connState])
+  )
+  const handleTerminalPlainTap = useCallback(
+    (handle: string) => {
+      if (handle === activeHandleRef.current && shouldSendTabForTap(handle)) {
+        void handleAccessoryKeyRef.current({ bytes: '\t' })
+      }
+    },
+    [shouldSendTabForTap]
+  )
   const stopAccessoryRepeat = useCallback(() => {
     if (repeatTimeoutRef.current) {
       clearTimeout(repeatTimeoutRef.current)
@@ -212,6 +228,8 @@ export function useMobileSessionAccessorySelection(scope: MobileSessionTerminalI
     repeatTimeoutRef,
     repeatIntervalRef,
     handleAccessoryKeyRef,
+    handleTerminalPlainTap,
+    cancelPendingTap,
     stopAccessoryRepeat,
     startAccessoryRepeat,
     setMobileSessionRootRef,
