@@ -1,3 +1,9 @@
+import {
+  TERMINAL_ACCESSORY_REPEAT_DELAY_MS,
+  TERMINAL_ACCESSORY_REPEAT_INTERVAL_MS
+} from './terminal-accessory-repeat'
+import { TERMINAL_DOUBLE_TAP_TAB_MAX_DELAY_MS } from './terminal-double-tap-tab'
+
 // Document-level latching touch dispatcher, injected into XTERM_HTML. Extracted
 // from terminal-webview-html.ts to keep that file within its max-lines budget.
 // Closes over host-IIFE state/functions: dispatch/tapCandidate/longPress*,
@@ -8,7 +14,62 @@ export const TERMINAL_TAP_DISPATCH_JS = `
   // ============================================================
   // LATCHING TOUCH DISPATCHER (document-level)
   // ============================================================
-  var dispatch = { mode: 'idle', touchId: null, touchIds: null, longPressFingerInsideOverlay: false };
+  var dispatch = { mode: 'idle', touchId: null, touchIds: null, swipeSequence: '', longPressFingerInsideOverlay: false };
+  var swipeRepeatTimer = null;
+  var SWIPE_REPEAT_DELAY_MS = ${TERMINAL_ACCESSORY_REPEAT_DELAY_MS};
+  var SWIPE_REPEAT_INTERVAL_MS = ${TERMINAL_ACCESSORY_REPEAT_INTERVAL_MS};
+  var DOUBLE_TAP_MAX_DELAY_MS = ${TERMINAL_DOUBLE_TAP_TAB_MAX_DELAY_MS};
+
+  function clearSwipeRepeat() {
+    if (swipeRepeatTimer) {
+      clearTimeout(swipeRepeatTimer);
+      swipeRepeatTimer = null;
+    }
+  }
+
+  function armSwipeRepeat(delay) {
+    clearSwipeRepeat();
+    swipeRepeatTimer = setTimeout(function repeatSwipeArrow() {
+      swipeRepeatTimer = null;
+      if (dispatch.mode !== 'swipe' || !dispatch.swipeSequence) return;
+      notify({ type: 'terminal-input', bytes: dispatch.swipeSequence });
+      armSwipeRepeat(SWIPE_REPEAT_INTERVAL_MS);
+    }, delay);
+  }
+
+  function beginSwipe(t) {
+    if (dispatch.mode !== 'double-tap' || !tapCandidate || t.identifier !== tapCandidate.identifier) return false;
+    var dx = t.clientX - tapCandidate.x;
+    var dy = t.clientY - tapCandidate.y;
+    if (Math.abs(dx) + Math.abs(dy) <= TAP_SLOP) return false;
+    var final = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'D' : 'C') : (dy < 0 ? 'A' : 'B');
+    dispatch.mode = 'swipe';
+    dispatch.swipeSequence = buildArrowKeySequence(final);
+    tapCandidate = null;
+    clearLongPress();
+    cancelTerminalPlainTap();
+    notify({ type: 'terminal-input', bytes: dispatch.swipeSequence });
+    armSwipeRepeat(SWIPE_REPEAT_DELAY_MS);
+    return true;
+  }
+
+  function finishBlockedTouch() {
+    dispatch.mode = 'blocked-end';
+    dispatch.touchId = null;
+    Promise.resolve().then(function() {
+      if (dispatch.mode === 'blocked-end') dispatch.mode = 'idle';
+    });
+  }
+
+  function resetDoubleTapSwipe() {
+    clearSwipeRepeat();
+    pendingTerminalPlainTapAt = 0;
+    dispatch.swipeSequence = '';
+    if (dispatch.mode === 'double-tap' || dispatch.mode === 'swipe' || dispatch.mode === 'blocked-end') {
+      dispatch.mode = 'idle';
+      dispatch.touchId = null;
+    }
+  }
 
   function touchById(touches, id) {
     for (var i = 0; i < touches.length; i++) {
@@ -50,7 +111,7 @@ export const TERMINAL_TAP_DISPATCH_JS = `
   // Why: existing surface handlers stay attached to surface but we wrap
   // their entry to no-op when the dispatcher latches into select-drag.
   function dispatcherShouldBlockSurface() {
-    return dispatch.mode === 'select-drag';
+    return dispatch.mode === 'select-drag' || dispatch.mode === 'double-tap' || dispatch.mode === 'swipe' || dispatch.mode === 'blocked-end';
   }
 
   document.addEventListener('touchstart', function(e) {
@@ -67,6 +128,7 @@ export const TERMINAL_TAP_DISPATCH_JS = `
 
     if (e.touches.length === 2) {
       // pinch latch
+      clearSwipeRepeat();
       cancelTerminalPlainTap();
       if (selMode === 'select') {
         notify({ type: 'mobile-clip-cancel-by-pinch' });
@@ -107,9 +169,21 @@ export const TERMINAL_TAP_DISPATCH_JS = `
     }
 
     if (inSurface) {
+      var now = Date.now();
+      var elapsed = pendingTerminalPlainTapAt > 0 ? now - pendingTerminalPlainTapAt : -1;
+      if (e.touches.length === 1 && elapsed >= 0 && elapsed <= DOUBLE_TAP_MAX_DELAY_MS) {
+        pendingTerminalPlainTapAt = 0;
+        dispatch.mode = 'double-tap';
+        dispatch.touchId = t.identifier;
+        tapCandidate = { x: t.clientX, y: t.clientY, t: now, identifier: t.identifier };
+        clearLongPress();
+        e.preventDefault();
+        return;
+      }
+      pendingTerminalPlainTapAt = 0;
       dispatch.mode = 'surface';
       dispatch.touchId = t.identifier;
-      tapCandidate = { x: t.clientX, y: t.clientY, t: Date.now(), identifier: t.identifier };
+      tapCandidate = { x: t.clientX, y: t.clientY, t: now, identifier: t.identifier };
       armLongPress(t);
     }
   }, { capture: true, passive: false });
@@ -120,6 +194,28 @@ export const TERMINAL_TAP_DISPATCH_JS = `
       if (!t || !sel || !sel.activeHandle) return;
       e.preventDefault();
       handleDragMove(sel.activeHandle, t.clientX, t.clientY);
+      return;
+    }
+    if (dispatch.mode === 'double-tap') {
+      var doubleTapTouch = touchById(e.touches, dispatch.touchId);
+      if (!doubleTapTouch || e.touches.length !== 1) {
+        resetDoubleTapSwipe();
+        return;
+      }
+      if (beginSwipe(doubleTapTouch)) {
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      return;
+    }
+    if (dispatch.mode === 'swipe') {
+      var swipeTouch = touchById(e.touches, dispatch.touchId);
+      if (!swipeTouch || e.touches.length !== 1) {
+        clearSwipeRepeat();
+        return;
+      }
+      e.preventDefault();
       return;
     }
     if (dispatch.mode === 'surface' || dispatch.mode === 'pinch') {
@@ -156,6 +252,28 @@ export const TERMINAL_TAP_DISPATCH_JS = `
       dispatch.touchId = null;
       return;
     }
+    if (dispatch.mode === 'swipe') {
+      clearSwipeRepeat();
+      dispatch.swipeSequence = '';
+      if (e.touches.length === 0) {
+        finishBlockedTouch();
+      }
+      return;
+    }
+    if (dispatch.mode === 'double-tap') {
+      if (e.touches.length === 0 && tapCandidate) {
+        if (selMode !== 'select' && Date.now() - tapCandidate.t <= TAP_MAX_MS) {
+          notifyTerminalSurfaceTap(tapCandidate.x, tapCandidate.y, true);
+          pendingTerminalPlainTapAt = 0;
+        } else {
+          cancelTerminalPlainTap();
+        }
+      }
+      clearLongPress();
+      tapCandidate = null;
+      if (e.touches.length === 0) finishBlockedTouch();
+      return;
+    }
     if (dispatch.mode === 'pinch') {
       if (e.touches.length < 2) {
         dispatch.mode = (e.touches.length === 1) ? 'surface' : 'idle';
@@ -185,6 +303,7 @@ export const TERMINAL_TAP_DISPATCH_JS = `
   }, { capture: true, passive: true });
 
   document.addEventListener('touchcancel', function() {
+    clearSwipeRepeat();
     cancelTerminalPlainTap();
     clearLongPress();
     tapCandidate = null;
@@ -195,5 +314,6 @@ export const TERMINAL_TAP_DISPATCH_JS = `
     dispatch.mode = 'idle';
     dispatch.touchId = null;
     dispatch.touchIds = null;
+    dispatch.swipeSequence = '';
   }, { capture: true, passive: true });
 `

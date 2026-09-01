@@ -3,7 +3,7 @@
 // printed http(s) URL must post an `open-url` message (which RN routes to the
 // in-app/phone browser). Regression guard for taps that jitter a few pixels —
 // those were being swallowed because the tap shared the long-press slop gate.
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { XTERM_HTML } from './terminal-webview-html'
 
 function iifeSource(): string {
@@ -19,7 +19,12 @@ function bodyMarkup(): string {
 }
 
 // Minimal xterm stub: one scrollback line containing a URL, fixed 8x15 cells.
-function makeTerminal(lineRef: { current: string }, mouseTrackingMode = 'none') {
+function makeTerminal(
+  lineRef: { current: string },
+  mouseTrackingMode = 'none',
+  scrollLines = vi.fn(),
+  scrollbackRows = 0
+) {
   return {
     cols: 80,
     rows: 24,
@@ -29,13 +34,13 @@ function makeTerminal(lineRef: { current: string }, mouseTrackingMode = 'none') 
     _core: { _renderService: { dimensions: { css: { cell: { width: 8, height: 15 } } } } },
     buffer: {
       active: {
-        viewportY: 0,
-        baseY: 0,
+        viewportY: scrollbackRows,
+        baseY: scrollbackRows,
         length: 1,
         cursorY: 0,
         type: 'normal' as const,
         getLine(row: number) {
-          const text = row === 0 ? lineRef.current : undefined
+          const text = row === scrollbackRows ? lineRef.current : undefined
           if (text === undefined) {
             return null
           }
@@ -60,7 +65,7 @@ function makeTerminal(lineRef: { current: string }, mouseTrackingMode = 'none') 
     selectAll() {},
     clearSelection() {},
     select() {},
-    scrollLines() {},
+    scrollLines,
     scrollToBottom() {},
     getSelection: () => '',
     onLineFeed: () => ({ dispose() {} }),
@@ -77,13 +82,15 @@ type OscLinkRange = { row: number; startCol: number; endCol: number; uri: string
 function boot(
   line: string,
   oscLinks?: OscLinkRange[],
-  mouseTrackingMode = 'none'
-): { posted: Posted; setLine: (line: string) => void } {
+  mouseTrackingMode = 'none',
+  scrollbackRows = 0
+): { posted: Posted; scrollLines: ReturnType<typeof vi.fn>; setLine: (line: string) => void } {
   const posted: Posted = []
+  const scrollLines = vi.fn()
   const lineRef = { current: line }
   const w = window as unknown as { Terminal: unknown; ReactNativeWebView: unknown }
   w.Terminal = function () {
-    return makeTerminal(lineRef, mouseTrackingMode)
+    return makeTerminal(lineRef, mouseTrackingMode, scrollLines, scrollbackRows)
   }
   w.ReactNativeWebView = {
     postMessage(s: string) {
@@ -91,7 +98,6 @@ function boot(
     }
   }
   document.body.innerHTML = bodyMarkup()
-  // eslint-disable-next-line no-new-func
   new Function(iifeSource())()
   window.dispatchEvent(
     new MessageEvent('message', {
@@ -100,6 +106,7 @@ function boot(
   )
   return {
     posted,
+    scrollLines,
     setLine: (nextLine: string) => {
       lineRef.current = nextLine
     }
@@ -112,8 +119,12 @@ function fireTouch(type: string, touches: Array<{ x: number; y: number }>): void
   Object.defineProperty(ev, 'touches', {
     value: touches.map((p, i) => ({ identifier: i, clientX: p.x, clientY: p.y, target: surface }))
   })
-  Object.defineProperty(ev, 'target', { value: surface })
-  document.dispatchEvent(ev)
+  surface.dispatchEvent(ev)
+}
+
+function firePlainTap(x = 100, y = 100): void {
+  fireTouch('touchstart', [{ x, y }])
+  fireTouch('touchend', [])
 }
 
 // Wait one macrotask so init()'s rAF chain (term.open -> ready) settles.
@@ -131,6 +142,8 @@ describe('terminal WebView tap routing', () => {
     Object.defineProperty(window, 'innerWidth', { value: 200, configurable: true })
     Object.defineProperty(window, 'innerHeight', { value: 400, configurable: true })
   })
+
+  afterEach(() => vi.useRealTimers())
 
   it('posts open-url when a clean tap lands on a URL', async () => {
     const { posted } = boot(URL_LINE)
@@ -376,5 +389,151 @@ describe('terminal WebView tap routing', () => {
     expect(posted.find((m) => m.type === 'open-url')).toBeUndefined()
     expect(posted.find((m) => m.type === 'terminal-plain-tap')).toBeUndefined()
     expect(posted.find((m) => m.type === 'terminal-plain-tap-cancelled')).toBeDefined()
+  })
+
+  it('sends one arrow only when the second tap moves and suppresses tap routing', async () => {
+    const { posted, scrollLines } = boot(URL_LINE, undefined, 'none', 20)
+    await settle()
+
+    for (const [x, y] of [
+      [100, 60],
+      [100, 140],
+      [140, 100],
+      [60, 100]
+    ] as const) {
+      firePlainTap()
+      fireTouch('touchstart', [{ x: 100, y: 100 }])
+      fireTouch('touchmove', [{ x, y }])
+      fireTouch('touchend', [])
+    }
+    expect(
+      posted.filter((message) => message.type === 'terminal-input').map((message) => message.bytes)
+    ).toEqual(['\x1b[A', '\x1b[B', '\x1b[C', '\x1b[D'])
+    expect(scrollLines).not.toHaveBeenCalled()
+    expect(posted.find((message) => message.type === 'open-url')).toBeUndefined()
+    expect(posted.filter((message) => message.type === 'terminal-plain-tap')).toHaveLength(4)
+  })
+
+  it('repeats only after the swiped finger stays down for 400ms', async () => {
+    const { posted } = boot('plain prompt')
+    await settle()
+    vi.useFakeTimers()
+
+    firePlainTap()
+    posted.length = 0
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireTouch('touchmove', [{ x: 140, y: 100 }])
+    expect(posted.filter((message) => message.type === 'terminal-input')).toHaveLength(1)
+    vi.advanceTimersByTime(399)
+    expect(posted.filter((message) => message.type === 'terminal-input')).toHaveLength(1)
+    vi.advanceTimersByTime(1)
+    expect(posted.filter((message) => message.type === 'terminal-input')).toHaveLength(2)
+    vi.advanceTimersByTime(90)
+    expect(posted.filter((message) => message.type === 'terminal-input')).toHaveLength(4)
+  })
+
+  it('keeps the hold time across movement and stops on release', async () => {
+    const { posted } = boot('plain prompt')
+    await settle()
+    vi.useFakeTimers()
+
+    firePlainTap()
+    posted.length = 0
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireTouch('touchmove', [{ x: 140, y: 100 }])
+    vi.advanceTimersByTime(300)
+    fireTouch('touchmove', [{ x: 180, y: 100 }])
+    vi.advanceTimersByTime(99)
+    expect(posted.filter((message) => message.type === 'terminal-input')).toHaveLength(1)
+    vi.advanceTimersByTime(1)
+    expect(posted.filter((message) => message.type === 'terminal-input')).toHaveLength(2)
+    fireTouch('touchend', [])
+    vi.advanceTimersByTime(1000)
+    expect(posted.filter((message) => message.type === 'terminal-input')).toHaveLength(2)
+  })
+
+  it('keeps normal scrollback behavior for a single swipe', async () => {
+    const { posted, scrollLines } = boot('plain prompt', undefined, 'none', 20)
+    await settle()
+    posted.length = 0
+
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireTouch('touchmove', [{ x: 100, y: 160 }])
+    await settle()
+
+    expect(scrollLines).toHaveBeenCalled()
+    expect(posted.find((message) => message.type === 'terminal-input')).toBeUndefined()
+  })
+
+  it('returns to normal scrolling when the second touch starts after 300ms', async () => {
+    const { posted, scrollLines } = boot('plain prompt', undefined, 'none', 20)
+    await settle()
+    vi.useFakeTimers()
+
+    firePlainTap()
+    vi.advanceTimersByTime(301)
+    scrollLines.mockClear()
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireTouch('touchmove', [{ x: 100, y: 160 }])
+    vi.runOnlyPendingTimers()
+    fireTouch('touchend', [])
+
+    expect(scrollLines).toHaveBeenCalled()
+    expect(posted.find((message) => message.type === 'terminal-input')).toBeUndefined()
+  })
+
+  it('blocks scrolling throughout the second tap before sending Tab or an arrow', async () => {
+    const { posted, scrollLines } = boot('plain prompt', undefined, 'none', 20)
+    await settle()
+
+    firePlainTap()
+    scrollLines.mockClear()
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireTouch('touchmove', [{ x: 104, y: 105 }])
+    await settle()
+    fireTouch('touchend', [])
+
+    expect(scrollLines).not.toHaveBeenCalled()
+    expect(posted.filter((message) => message.type === 'terminal-plain-tap')).toHaveLength(2)
+    expect(posted.find((message) => message.type === 'terminal-input')).toBeUndefined()
+  })
+
+  it('does not arm arrow input when the first tap activates a link', async () => {
+    const { posted, scrollLines } = boot(URL_LINE, undefined, 'none', 20)
+    await settle()
+
+    firePlainTap(tapX, tapY)
+    scrollLines.mockClear()
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireTouch('touchmove', [{ x: 100, y: 160 }])
+    await settle()
+    fireTouch('touchend', [])
+
+    expect(posted.find((message) => message.type === 'open-url')).toBeDefined()
+    expect(posted.find((message) => message.type === 'terminal-input')).toBeUndefined()
+  })
+
+  it('stops held repeats on cancellation and pinch', async () => {
+    const { posted } = boot('plain prompt')
+    await settle()
+    vi.useFakeTimers()
+
+    firePlainTap()
+    posted.length = 0
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireTouch('touchmove', [{ x: 140, y: 100 }])
+    fireTouch('touchcancel', [])
+    vi.advanceTimersByTime(1000)
+    expect(posted.filter((message) => message.type === 'terminal-input')).toHaveLength(1)
+
+    firePlainTap()
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireTouch('touchmove', [{ x: 140, y: 100 }])
+    fireTouch('touchstart', [
+      { x: 140, y: 100 },
+      { x: 170, y: 100 }
+    ])
+    vi.advanceTimersByTime(1000)
+    expect(posted.filter((message) => message.type === 'terminal-input')).toHaveLength(2)
   })
 })

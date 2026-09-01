@@ -148,12 +148,16 @@ export const TERMINAL_HTML_FRAGMENT_06 = `  var linesEverWritten = 0;
     return out;
   }
 
-  function buildArrowScrollSequence(lines) {
+  function buildArrowKeySequence(final) {
     var prefix = '[';
     try {
       if (term && term.modes && term.modes.applicationCursorKeysMode) prefix = 'O';
     } catch (e) {}
-    return ESC + prefix + (lines < 0 ? 'A' : 'B');
+    return ESC + prefix + final;
+  }
+
+  function buildArrowScrollSequence(lines) {
+    return buildArrowKeySequence(lines < 0 ? 'A' : 'B');
   }
 
   function buildMouseWheelSequence(lines, clientX, clientY) {
