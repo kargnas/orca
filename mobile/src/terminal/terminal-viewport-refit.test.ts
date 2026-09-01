@@ -18,6 +18,11 @@ const sessionSource = [
   readMobileSessionRouteSource('../session/use-mobile-session-keyboard-state.ts'),
   readMobileSessionRouteSource('../session/MobileSessionActiveContent.tsx')
 ].join('\n')
+const keyboardResizeSource = [
+  readMobileSessionRouteSource('../session/use-mobile-session-preference-focus.ts'),
+  readMobileSessionRouteSource('../session/use-mobile-session-presentation.ts'),
+  readMobileSessionRouteSource('../session/MobileSessionCommandDock.tsx')
+].join('\n')
 
 describe('terminal viewport refit', () => {
   it('refits when the window dimensions change (fold/unfold, rotation)', () => {
@@ -30,7 +35,7 @@ describe('terminal viewport refit', () => {
     expect(resizeEffect).toContain('viewportMeasuredRef.current = false')
     expect(resizeEffect).toContain('scheduleViewportRefit()')
     expect(resizeEffect).toContain(
-      '[windowWidth, windowHeight, viewportMeasuredRef, scheduleViewportRefit]'
+      '[windowWidth, windowHeight, resizeForKeyboard, viewportMeasuredRef, scheduleViewportRefit]'
     )
   })
 
@@ -82,6 +87,35 @@ describe('terminal viewport refit', () => {
 
     dispatch({ type: 'frame-height', height: 500 })
     expect(refitCount).toBe(2)
+  })
+
+  it('refits frame-height changes while keyboard resizing is enabled', () => {
+    const changed = reduceTerminalFrameHeightRefit(
+      { frameHeight: 600, keyboardVisible: true, pending: false },
+      { type: 'frame-height', height: 520 },
+      true
+    )
+    expect(changed).toEqual({
+      state: { frameHeight: 520, keyboardVisible: true, pending: false },
+      shouldRefit: true
+    })
+
+    expect(
+      reduceTerminalFrameHeightRefit(changed.state, { type: 'refit-committed' }, true).shouldRefit
+    ).toBe(true)
+  })
+
+  it('shrinks terminal layout instead of translating it when the option is enabled', () => {
+    expect(keyboardResizeSource).toContain('loadTerminalKeyboardResizeEnabled()')
+    expect(keyboardResizeSource).toContain(
+      'insets.bottom + (terminalKeyboardResizeEnabled ? keyboardLift : 0)'
+    )
+    expect(keyboardResizeSource).toContain(
+      'translateY: terminalKeyboardResizeEnabled ? 0 : -keyboardLift'
+    )
+    expect(keyboardResizeSource).toContain(
+      'const activeTerminalKeyboardLift = terminalKeyboardResizeEnabled'
+    )
   })
 
   it('routes imperative height notifications through the keyboard-aware reducer', () => {
@@ -152,6 +186,7 @@ describe('terminal viewport refit', () => {
     expect(sessionSource).toContain('useTerminalViewportRefit({')
     expect(sessionSource).toContain('tabStripVisible: terminals.length > 1')
     expect(sessionSource).toContain('textScale: terminalTextScale')
+    expect(sessionSource).toContain('resizeForKeyboard: terminalKeyboardResizeEnabled')
     expect(sessionSource).toContain('connState,')
     expect(sessionSource).toContain('notifyTerminalFrameHeight(nextHeight)')
     expect(sessionSource).toContain('notifyKeyboardVisibility(true)')
@@ -167,9 +202,8 @@ describe('terminal viewport refit', () => {
   it('defers height-only window resizes while the keyboard is visible', () => {
     const start = hookSource.indexOf('const prevWindowDimsRef')
     const windowEffect = hookSource.slice(start, start + 1_100)
-    expect(windowEffect).toContain(
-      'prev.width === windowWidth && frameHeightRefitStateRef.current.keyboardVisible'
-    )
+    expect(windowEffect).toContain('!resizeForKeyboard')
+    expect(windowEffect).toContain('frameHeightRefitStateRef.current.keyboardVisible')
   })
 
   it('forces a refit on iOS foreground and connection recovery', () => {

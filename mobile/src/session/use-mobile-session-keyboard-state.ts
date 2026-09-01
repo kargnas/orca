@@ -15,6 +15,7 @@ export function useMobileSessionKeyboardState(scope: MobileSessionLifecycleModel
     connState,
     terminals,
     terminalTextScale,
+    terminalKeyboardResizeEnabled,
     activeSessionTabId,
     tabStripRef,
     tabStripOffsetRef,
@@ -52,6 +53,7 @@ export function useMobileSessionKeyboardState(scope: MobileSessionLifecycleModel
     connState,
     tabStripVisible: terminals.length > 1,
     textScale: terminalTextScale,
+    resizeForKeyboard: terminalKeyboardResizeEnabled,
     terminalFrameWidth,
     unsubscribeTerminal,
     subscribeToTerminal

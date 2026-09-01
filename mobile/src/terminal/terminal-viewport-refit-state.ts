@@ -36,8 +36,8 @@ export function resolveTerminalUpdateViewportCapability(
   return response.error.code === 'method_not_found' ? 'unsupported' : 'unknown'
 }
 
-// Why: defer height refits while typing, then coalesce every skipped layout
-// change into one correction after the keyboard closes.
+// Why: defer height refits while typing unless the keyboard-resize option
+// explicitly makes the visible PTY grid follow those layout changes.
 export type TerminalFrameHeightRefitState = {
   frameHeight: number
   keyboardVisible: boolean
@@ -51,13 +51,14 @@ export type TerminalFrameHeightRefitEvent =
 
 export function reduceTerminalFrameHeightRefit(
   state: TerminalFrameHeightRefitState,
-  event: TerminalFrameHeightRefitEvent
+  event: TerminalFrameHeightRefitEvent,
+  resizeForKeyboard = false
 ): { state: TerminalFrameHeightRefitState; shouldRefit: boolean } {
   if (event.type === 'refit-committed') {
     // Why: the debounced height refit is firing. The keyboard can reopen during
     // the debounce window, so re-check here and re-defer rather than reflow the
     // PTY mid-keystroke; it runs on the next keyboard close.
-    if (state.keyboardVisible) {
+    if (state.keyboardVisible && !resizeForKeyboard) {
       return { state: { ...state, pending: true }, shouldRefit: false }
     }
     return { state: { ...state, pending: false }, shouldRefit: true }
@@ -79,7 +80,7 @@ export function reduceTerminalFrameHeightRefit(
   if (event.height === state.frameHeight) {
     return { state, shouldRefit: false }
   }
-  if (state.keyboardVisible) {
+  if (state.keyboardVisible && !resizeForKeyboard) {
     return {
       state: { ...state, frameHeight: event.height, pending: true },
       shouldRefit: false
