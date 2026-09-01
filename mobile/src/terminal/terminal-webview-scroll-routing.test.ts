@@ -266,9 +266,11 @@ describe('TerminalWebView scroll routing', () => {
     )
     expect(inputBlockEnd).toBeGreaterThan(inputBlockStart)
     const inputBlock = sessionSource.slice(inputBlockStart, inputBlockEnd)
-    expect(inputBlock).toContain('!isGestureMouseTrackingMode(modes?.mouseTrackingMode)')
-    expect(inputBlock).toContain('const sequenceCount = countTerminalGestureInputSequences(bytes)')
-    expect(inputBlock.indexOf('countTerminalGestureInputSequences')).toBeLessThan(
+    expect(inputBlock).toContain('isGestureMouseTrackingMode(modes?.mouseTrackingMode)')
+    expect(inputBlock).toContain(
+      'const sequenceCount = countTerminalGestureInputSequencesForRoute('
+    )
+    expect(inputBlock.indexOf('countTerminalGestureInputSequencesForRoute')).toBeLessThan(
       inputBlock.indexOf('enqueueTerminalGestureInput')
     )
   })

@@ -8,7 +8,7 @@ import {
   buildTerminalSendParams,
   TERMINAL_INPUT_SEND_OPTIONS
 } from '../terminal/terminal-send-request'
-import { countTerminalGestureInputSequences } from '../terminal/terminal-gesture-input'
+import { countTerminalGestureInputSequencesForRoute } from '../terminal/terminal-gesture-input'
 import {
   isGestureMouseTrackingMode,
   TERMINAL_GESTURE_INPUT_BUCKET_CAPACITY,
@@ -195,11 +195,11 @@ export function useMobileSessionTerminalInput(scope: MobileSessionFileActionsMod
         return
       }
       const modes = ptyModesRef.current.get(handle)
-      // Why: WebView gesture bytes can become PTY input, so gate mouse reports behind validation and SSH-safe rate limiting.
-      if (!modes?.altScreen && !isGestureMouseTrackingMode(modes?.mouseTrackingMode)) {
-        return
-      }
-      const sequenceCount = countTerminalGestureInputSequences(bytes)
+      // Why: double-tap swipes may send arrows at a shell prompt; mouse reports remain limited to TUI-owned screens.
+      const sequenceCount = countTerminalGestureInputSequencesForRoute(
+        bytes,
+        !!modes?.altScreen || isGestureMouseTrackingMode(modes?.mouseTrackingMode)
+      )
       if (sequenceCount == null) {
         return
       }
