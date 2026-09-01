@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { View, Text, Pressable, Switch } from 'react-native'
+import { View, Text, Pressable, Switch, Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import Animated, {
@@ -20,8 +20,10 @@ import { setTerminalAutoRestoreFitMsForHost } from '../src/terminal/terminal-aut
 import { terminalSettingsScreenStyles as styles } from '../src/terminal/terminal-settings-screen-styles'
 import {
   loadTerminalAutocompleteEnabled,
+  loadTerminalKeyboardResizeEnabled,
   loadTerminalTextScale,
   saveTerminalAutocompleteEnabled,
+  saveTerminalKeyboardResizeEnabled,
   saveTerminalTextScale
 } from '../src/storage/preferences'
 
@@ -175,6 +177,25 @@ export default function TerminalSettingsScreen() {
     userToggledAutocompleteRef.current = true
     setAutocompleteEnabled(next)
     void saveTerminalAutocompleteEnabled(next)
+  }, [])
+
+  const [keyboardResizeEnabled, setKeyboardResizeEnabled] = useState(false)
+  const userToggledKeyboardResizeRef = useRef(false)
+  useEffect(() => {
+    let stale = false
+    void loadTerminalKeyboardResizeEnabled().then((enabled) => {
+      if (!stale && !userToggledKeyboardResizeRef.current) {
+        setKeyboardResizeEnabled(enabled)
+      }
+    })
+    return () => {
+      stale = true
+    }
+  }, [])
+  const toggleKeyboardResize = useCallback((next: boolean) => {
+    userToggledKeyboardResizeRef.current = true
+    setKeyboardResizeEnabled(next)
+    void saveTerminalKeyboardResizeEnabled(next)
   }, [])
 
   useEffect(() => {
@@ -348,6 +369,28 @@ export default function TerminalSettingsScreen() {
             />
           </View>
         </View>
+
+        {Platform.OS === 'android' && (
+          <>
+            <Text style={[styles.groupHeading, styles.inputGroupGap]}>KEYBOARD LAYOUT</Text>
+            <Text style={styles.groupDescription}>
+              Reduce terminal rows to the visible area while the on-screen keyboard is open.
+            </Text>
+            <View style={[styles.section, styles.sectionTopGap]}>
+              <View style={styles.row}>
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Resize terminal for keyboard</Text>
+                </View>
+                <Switch
+                  value={keyboardResizeEnabled}
+                  onValueChange={toggleKeyboardResize}
+                  trackColor={{ false: colors.bgRaised, true: colors.textSecondary }}
+                  thumbColor={colors.textPrimary}
+                />
+              </View>
+            </View>
+          </>
+        )}
 
         <TerminalShortcutSettings
           scrollRef={scrollRef}
