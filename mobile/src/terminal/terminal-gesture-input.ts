@@ -57,12 +57,33 @@ function isArrowScrollSequence(bytes: string, offset: number): number | null {
   if (
     sequence === `${ESC}[A` ||
     sequence === `${ESC}[B` ||
+    sequence === `${ESC}[C` ||
+    sequence === `${ESC}[D` ||
     sequence === `${ESC}OA` ||
-    sequence === `${ESC}OB`
+    sequence === `${ESC}OB` ||
+    sequence === `${ESC}OC` ||
+    sequence === `${ESC}OD`
   ) {
     return offset + 3
   }
   return null
+}
+
+export function countTerminalArrowInputSequences(bytes: string): number | null {
+  if (bytes.length === 0 || bytes.length > MAX_TERMINAL_GESTURE_INPUT_LENGTH) {
+    return null
+  }
+
+  let offset = 0
+  let sequenceCount = 0
+  while (offset < bytes.length) {
+    const next = isArrowScrollSequence(bytes, offset)
+    if (next == null || ++sequenceCount > MAX_TERMINAL_GESTURE_INPUT_SEQUENCES) {
+      return null
+    }
+    offset = next
+  }
+  return sequenceCount
 }
 
 export function countTerminalGestureInputSequences(bytes: string): number | null {
@@ -88,6 +109,17 @@ export function countTerminalGestureInputSequences(bytes: string): number | null
     offset = next
   }
   return sequenceCount
+}
+
+export function countTerminalGestureInputSequencesForRoute(
+  bytes: string,
+  allowAllGestureInput: boolean
+): number | null {
+  const arrowCount = countTerminalArrowInputSequences(bytes)
+  if (arrowCount != null) {
+    return arrowCount
+  }
+  return allowAllGestureInput ? countTerminalGestureInputSequences(bytes) : null
 }
 
 export function isTerminalGestureInput(bytes: string): boolean {

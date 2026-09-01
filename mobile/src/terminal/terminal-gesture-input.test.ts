@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  countTerminalArrowInputSequences,
   countTerminalGestureInputSequences,
+  countTerminalGestureInputSequencesForRoute,
   isTerminalGestureInput
 } from './terminal-gesture-input'
 
@@ -12,6 +14,33 @@ describe('isTerminalGestureInput', () => {
     expect(isTerminalGestureInput(`${ESC}[A`.repeat(32))).toBe(true)
     expect(countTerminalGestureInputSequences(`${ESC}[A${ESC}[B${ESC}OA${ESC}OB`)).toBe(4)
     expect(countTerminalGestureInputSequences(`${ESC}[A`.repeat(32))).toBe(32)
+  })
+
+  it('accepts CSI and SS3 sequences for all arrow directions', () => {
+    const input = `${ESC}[A${ESC}[B${ESC}[C${ESC}[D${ESC}OA${ESC}OB${ESC}OC${ESC}OD`
+
+    expect(isTerminalGestureInput(input)).toBe(true)
+    expect(countTerminalGestureInputSequences(input)).toBe(8)
+    expect(countTerminalArrowInputSequences(input)).toBe(8)
+    expect(isTerminalGestureInput(`${ESC}[E`)).toBe(false)
+    expect(isTerminalGestureInput(`${ESC}OE`)).toBe(false)
+  })
+
+  it('distinguishes arrow input from mouse gesture input', () => {
+    expect(countTerminalArrowInputSequences(`${ESC}[A${ESC}OD`)).toBe(2)
+    expect(countTerminalArrowInputSequences(`${ESC}[<64;1;1M`)).toBeNull()
+    expect(
+      countTerminalArrowInputSequences(`${ESC}[M${String.fromCharCode(96, 33, 33)}`)
+    ).toBeNull()
+  })
+
+  it('allows arrows without allowing mouse input on a normal shell', () => {
+    const arrow = `${ESC}[D`
+    const mouse = `${ESC}[<64;1;1M`
+
+    expect(countTerminalGestureInputSequencesForRoute(arrow, false)).toBe(1)
+    expect(countTerminalGestureInputSequencesForRoute(mouse, false)).toBeNull()
+    expect(countTerminalGestureInputSequencesForRoute(mouse, true)).toBe(1)
   })
 
   it('accepts repeated SGR wheel sequences', () => {
