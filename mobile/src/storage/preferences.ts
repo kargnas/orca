@@ -94,6 +94,21 @@ export async function saveTerminalKeyboardResizeEnabled(enabled: boolean): Promi
   await AsyncStorage.setItem(TERMINAL_KEYBOARD_RESIZE_KEY, String(enabled))
 }
 
+const TERMINAL_TAP_KEYBOARD_KEY = 'orca:terminalTapKeyboardEnabled'
+
+export async function loadTerminalTapKeyboardEnabled(): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(TERMINAL_TAP_KEYBOARD_KEY)
+    return raw === null || raw === 'true'
+  } catch {
+    return true
+  }
+}
+
+export async function saveTerminalTapKeyboardEnabled(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(TERMINAL_TAP_KEYBOARD_KEY, String(enabled))
+}
+
 const DOUBLE_TAP_TAB_KEY = 'orca:terminalDoubleTapTabEnabled'
 
 export async function loadTerminalDoubleTapTabEnabled(): Promise<boolean> {

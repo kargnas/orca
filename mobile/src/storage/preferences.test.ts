@@ -12,6 +12,7 @@ import {
   loadHostSidebarWidth,
   loadPushNotificationsEnabled,
   loadTerminalKeyboardResizeEnabled,
+  loadTerminalTapKeyboardEnabled,
   loadTerminalAutocompleteEnabled,
   loadTerminalDoubleTapTabEnabled,
   loadTerminalLinkOpenMode,
@@ -21,6 +22,7 @@ import {
   saveHostSidebarWidth,
   savePushNotificationsEnabled,
   saveTerminalKeyboardResizeEnabled,
+  saveTerminalTapKeyboardEnabled,
   saveTerminalAutocompleteEnabled,
   saveTerminalDoubleTapTabEnabled,
   saveTerminalLinkOpenMode
@@ -383,6 +385,36 @@ describe('terminal keyboard resize preference', () => {
 
     await saveTerminalKeyboardResizeEnabled(false)
     expect(AsyncStorage.setItem).toHaveBeenCalledWith('orca:terminalKeyboardResizeEnabled', 'false')
+  })
+})
+
+describe('terminal tap keyboard preference', () => {
+  beforeEach(() => {
+    vi.mocked(AsyncStorage.getItem).mockReset()
+    vi.mocked(AsyncStorage.setItem).mockReset()
+  })
+
+  it('defaults to enabled when unset or unreadable', async () => {
+    vi.mocked(AsyncStorage.getItem).mockResolvedValue(null)
+    await expect(loadTerminalTapKeyboardEnabled()).resolves.toBe(true)
+    expect(AsyncStorage.getItem).toHaveBeenCalledWith('orca:terminalTapKeyboardEnabled')
+
+    vi.mocked(AsyncStorage.getItem).mockRejectedValue(new Error('storage unavailable'))
+    await expect(loadTerminalTapKeyboardEnabled()).resolves.toBe(true)
+  })
+
+  it('loads and persists the selected boolean value', async () => {
+    vi.mocked(AsyncStorage.getItem).mockResolvedValue('false')
+    await expect(loadTerminalTapKeyboardEnabled()).resolves.toBe(false)
+
+    vi.mocked(AsyncStorage.getItem).mockResolvedValue('true')
+    await expect(loadTerminalTapKeyboardEnabled()).resolves.toBe(true)
+
+    await saveTerminalTapKeyboardEnabled(false)
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith('orca:terminalTapKeyboardEnabled', 'false')
+
+    await saveTerminalTapKeyboardEnabled(true)
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith('orca:terminalTapKeyboardEnabled', 'true')
   })
 })
 
