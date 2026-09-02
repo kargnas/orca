@@ -29,6 +29,8 @@ describe('mobile Relay background lifecycle', () => {
     await supervisor.start()
 
     supervisor.setForeground(false)
+    // Why: the original design closed the relay synchronously here, before any timer.
+    expect(logical.suspendActiveSession).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(SIX_HOURS_MS)
     expect(logical.suspendActiveSession).not.toHaveBeenCalled()
     expect(logical.getState()).toBe('connected')
