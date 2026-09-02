@@ -50,6 +50,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Free runner disk space
+        # Why: the mobile dependency tree and Gradle build exceed the default Ubuntu runner's free space.
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android/sdk/system-images
+          sudo rm -rf /usr/local/lib/android/sdk/emulator
+          sudo apt-get clean
+          df -h /
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:

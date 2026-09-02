@@ -29,6 +29,21 @@ describe('mobile Android main release workflow', () => {
     )
   })
 
+  it('frees unused runner storage before installing Android build dependencies', () => {
+    const cleanupIndex = androidJob.steps.findIndex(
+      (step) => step.name === 'Free runner disk space'
+    )
+    const installIndex = androidJob.steps.findIndex((step) => step.name === 'Install dependencies')
+    const cleanup = stepNamed('Free runner disk space')?.run ?? ''
+
+    expect(cleanupIndex).toBeGreaterThan(-1)
+    expect(cleanupIndex).toBeLessThan(installIndex)
+    expect(cleanup).toContain('/usr/share/dotnet')
+    expect(cleanup).toContain('/system-images')
+    expect(cleanup).toContain('/emulator')
+    expect(cleanup).not.toMatch(/\/ndk|\/cmake|\/platforms|\/build-tools/)
+  })
+
   it('keeps the newest main APK and release tag when pushes overlap', () => {
     expect(workflow.concurrency['cancel-in-progress']).toBe(
       "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"
