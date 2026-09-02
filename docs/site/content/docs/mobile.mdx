@@ -103,7 +103,7 @@ The mobile terminal has a dedicated **Terminal settings** screen (Settings → T
 - **Text size** — a 50%–200% baseline zoom the WebView applies on top of fit-to-width. Pinch-to-zoom in the terminal snaps to the same presets and persists. The setting is per-device and doesn't change the desktop terminal.
 - **Autocomplete & autocorrect** — off by default so the OS never rewrites commands, flags, or paths in the command bar. Turn it on for phone-style typing; the live keyboard-capture input still streams raw keystrokes either way.
 - **Tap terminal to show keyboard** (Android) — on by default. Turn it off to keep the on-screen keyboard closed when tapping terminal output; explicit keyboard controls still open it.
-- **Double-tap sends Tab** — sends Tab when you double-tap empty terminal space. Move the second touch instead to send an arrow key in that direction; keep holding for 400 ms to repeat every 45 ms. A single swipe keeps the normal scroll behavior. Links, files, selections, pinching, and mouse gestures are excluded.
+- **Double-tap sends Tab** — sends Tab when you double-tap empty terminal space. While the on-screen keyboard is open, swipe once to send an arrow key in that direction; keep holding for 400 ms to repeat every 45 ms, or move across the starting point to switch direction immediately. The start point and current swipe vector appear while the gesture is active. With the keyboard closed, the same swipe scrolls normally. Links, files, selections, pinching, and mouse gestures keep their existing behavior.
 - **Resize terminal for keyboard** (Android) — reduces terminal rows to the visible area while the on-screen keyboard is open. It is off by default, so terminal rows stay unchanged unless you enable it.
 
 ## Troubleshooting
