@@ -205,7 +205,12 @@ describe('TerminalWebView engine errors', () => {
     expect(postedCommands().map((command) => command.type)).toEqual(['ping'])
 
     postWebViewMessage(renderer, { type: 'pong', pingId: ping?.id })
-    expect(postedCommands().map((command) => command.type)).toEqual(['ping', 'set-theme', 'write'])
+    expect(postedCommands().map((command) => command.type)).toEqual([
+      'ping',
+      'set-theme',
+      'keyboard-visible',
+      'write'
+    ])
     expect(onWebReady).toHaveBeenCalledTimes(1)
   })
 
@@ -250,6 +255,46 @@ describe('TerminalWebView engine errors', () => {
     expect(onEngineError).not.toHaveBeenCalled()
 
     postWebViewMessage(renderer, { type: 'web-ready' })
-    expect(postedCommands().map((command) => command.type)).toEqual(['set-theme', 'write'])
+    expect(postedCommands().map((command) => command.type)).toEqual([
+      'set-theme',
+      'keyboard-visible',
+      'write'
+    ])
+  })
+
+  it('sends the latest keyboard visibility after readiness and reload', () => {
+    const terminalTheme = {
+      mode: 'dark',
+      theme: { background: '#111111', foreground: '#eeeeee' }
+    }
+    const { renderer } = createTerminalWebViewRenderer(vi.fn(), {
+      keyboardVisible: false,
+      terminalTheme
+    })
+    postWebViewMessage(renderer, { type: 'web-ready' })
+    expect(
+      postedCommands().findLast((command) => command.type === 'keyboard-visible')
+    ).toMatchObject({ type: 'keyboard-visible', visible: false })
+
+    act(() => {
+      renderer.update(
+        createElement(TerminalWebView, {
+          keyboardVisible: true,
+          terminalTheme
+        })
+      )
+    })
+    expect(
+      postedCommands().findLast((command) => command.type === 'keyboard-visible')
+    ).toMatchObject({ type: 'keyboard-visible', visible: true })
+
+    const webView = renderer.root.findByType('WebView')
+    act(() => {
+      webView.props.onLoadStart()
+    })
+    postWebViewMessage(renderer, { type: 'web-ready' })
+    expect(
+      postedCommands().findLast((command) => command.type === 'keyboard-visible')
+    ).toMatchObject({ type: 'keyboard-visible', visible: true })
   })
 })

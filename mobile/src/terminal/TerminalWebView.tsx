@@ -24,6 +24,7 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(function
   {
     style,
     terminalTheme,
+    keyboardVisible = false,
     textScale = 1,
     onWebReady,
     onEngineError,
@@ -48,6 +49,8 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(function
   const isWebReadyRef = useRef(false)
   const pendingMessages = useMemo(() => createTerminalWebViewPendingMessages(), [])
   const messageIdRef = useRef(0)
+  const keyboardVisibleRef = useRef(keyboardVisible)
+  keyboardVisibleRef.current = keyboardVisible
   const pendingPingIdRef = useRef<number | null>(null)
   const terminalThemeKey = useMemo(() => JSON.stringify(terminalTheme ?? null), [terminalTheme])
   const measureResolveRef = useRef<
@@ -72,6 +75,13 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(function
     webViewRef.current?.postMessage(JSON.stringify({ ...msg, id }))
     return id
   }, [])
+
+  const sendKeyboardVisibility = useCallback(
+    (visible: boolean) => {
+      sendToWebView({ type: 'keyboard-visible', visible })
+    },
+    [sendToWebView]
+  )
 
   const flushPendingMessages = useCallback(() => {
     pendingMessages.flush(sendToWebView)
@@ -113,12 +123,15 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(function
       // Why: reload clears queued commands, so readiness must always restore the
       // native-selected theme even when its value did not change in React.
       sendToWebView({ type: 'set-theme', terminalTheme })
+      // Why: the touch dispatcher reads this synchronously while classifying gestures.
+      sendKeyboardVisibility(keyboardVisibleRef.current)
       flushPendingMessages()
     },
     [
       clearEngineError,
       clearWebReadyWatchdog,
       flushPendingMessages,
+      sendKeyboardVisibility,
       onWebReady,
       sendToWebView,
       terminalTheme
@@ -235,6 +248,13 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(function
   useEffect(() => {
     postMessage({ type: 'set-font-scale', fontScale: textScale })
   }, [postMessage, textScale])
+
+  useEffect(() => {
+    keyboardVisibleRef.current = keyboardVisible
+    if (isWebReadyRef.current) {
+      sendKeyboardVisibility(keyboardVisible)
+    }
+  }, [keyboardVisible, sendKeyboardVisibility])
 
   useImperativeHandle(
     ref,
