@@ -195,7 +195,7 @@ export function useMobileSessionTerminalInput(scope: MobileSessionFileActionsMod
         return
       }
       const modes = ptyModesRef.current.get(handle)
-      // Why: double-tap swipes may send arrows at a shell prompt; mouse reports remain limited to TUI-owned screens.
+      // Why: keyboard-visible swipes may send arrows at a shell prompt; mouse reports remain limited to TUI-owned screens.
       const sequenceCount = countTerminalGestureInputSequencesForRoute(
         bytes,
         !!modes?.altScreen || isGestureMouseTrackingMode(modes?.mouseTrackingMode)
