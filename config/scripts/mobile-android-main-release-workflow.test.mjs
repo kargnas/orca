@@ -54,4 +54,19 @@ describe('mobile Android main release workflow', () => {
     expect(ensureTag).toContain('--force-with-lease=')
     expect(ensureTag).toContain('refs/tags/$tag:$remote_target')
   })
+
+  it('publishes a versioned APK filename instead of the generic Gradle filename', () => {
+    const rename = stepNamed('Name release APK')
+    const upload = stepNamed('Upload APK artifact')
+    const release = stepNamed('Create GitHub Release')
+    const apkName =
+      'orca-mobile-${{ steps.release.outputs.version }}-build${{ steps.release.outputs.android_version_code }}.apk'
+
+    expect(rename?.env?.APK_NAME).toBe(apkName)
+    expect(rename?.run).toContain('mv')
+    expect(upload?.with?.path).toBe(`mobile/android/app/build/outputs/apk/release/${apkName}`)
+    expect(release?.run).toContain(`android/app/build/outputs/apk/release/${apkName}`)
+    expect(upload?.with?.path).not.toContain('app-release')
+    expect(release?.run).not.toContain('app-release*.apk')
+  })
 })

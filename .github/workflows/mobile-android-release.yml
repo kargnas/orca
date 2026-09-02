@@ -92,11 +92,19 @@ jobs:
       - name: Build Android release APK
         run: cd android && ./gradlew assembleRelease
 
+      - name: Name release APK
+        env:
+          APK_NAME: orca-mobile-${{ steps.release.outputs.version }}-build${{ steps.release.outputs.android_version_code }}.apk
+        run: |
+          set -euo pipefail
+          mv android/app/build/outputs/apk/release/app-release.apk \
+            "android/app/build/outputs/apk/release/$APK_NAME"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         with:
           name: orca-mobile-apk
-          path: mobile/android/app/build/outputs/apk/release/*.apk
+          path: mobile/android/app/build/outputs/apk/release/orca-mobile-${{ steps.release.outputs.version }}-build${{ steps.release.outputs.android_version_code }}.apk
 
       - name: Ensure GitHub release tag
         if: steps.release.outputs.publish_release == 'true' && !startsWith(github.ref, 'refs/tags/mobile-android-v')
@@ -133,7 +141,7 @@ jobs:
             gh release upload "$tag" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber \
-              android/app/build/outputs/apk/release/*.apk
+              android/app/build/outputs/apk/release/orca-mobile-${{ steps.release.outputs.version }}-build${{ steps.release.outputs.android_version_code }}.apk
           else
             gh release create "$tag" \
               --repo "$GITHUB_REPOSITORY" \
@@ -141,5 +149,5 @@ jobs:
               --prerelease \
               --latest=false \
               --generate-notes \
-              android/app/build/outputs/apk/release/*.apk
+              android/app/build/outputs/apk/release/orca-mobile-${{ steps.release.outputs.version }}-build${{ steps.release.outputs.android_version_code }}.apk
           fi
