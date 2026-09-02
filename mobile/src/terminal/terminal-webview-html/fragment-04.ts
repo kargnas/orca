@@ -5,7 +5,7 @@ export const TERMINAL_HTML_FRAGMENT_04 = `${TERMINAL_WEBGL_RECOVERY_JS}
 
   function init(cols, rows, initialData, nextTheme, nextFontScale, preserveScroll, nextOscLinks) {
     if (typeof nextFontScale === 'number' && nextFontScale > 0) currentTextScale = nextFontScale;
-    resetDoubleTapSwipe();
+    resetKeyboardSwipe();
     // Why: a width-reflow re-stream rewraps the same content at new cols.
     // Distance-from-bottom (rows) is the only stable anchor across reflow,
     // since line counts and cell positions change. null = stay pinned to bottom.

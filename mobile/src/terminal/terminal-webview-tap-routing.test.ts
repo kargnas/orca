@@ -6,6 +6,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { XTERM_HTML } from './terminal-webview-html'
 
+const bootListenerCleanups: Array<() => void> = []
+
 function iifeSource(): string {
   const start = XTERM_HTML.indexOf('(function() {')
   const end = XTERM_HTML.lastIndexOf('})();')
@@ -98,7 +100,44 @@ function boot(
     }
   }
   document.body.innerHTML = bodyMarkup()
-  new Function(iifeSource())()
+  const addWindowListener = window.addEventListener.bind(window)
+  const addDocumentListener = document.addEventListener.bind(document)
+  const registeredWindowListeners: Array<{
+    type: string
+    listener: EventListenerOrEventListenerObject
+    options?: boolean | AddEventListenerOptions
+  }> = []
+  const registeredDocumentListeners: Array<{
+    type: string
+    listener: EventListenerOrEventListenerObject
+    options?: boolean | AddEventListenerOptions
+  }> = []
+  const addWindowListenerSpy = vi
+    .spyOn(window, 'addEventListener')
+    .mockImplementation((type, listener, options) => {
+      registeredWindowListeners.push({ type, listener, options })
+      addWindowListener(type, listener, options)
+    })
+  const addDocumentListenerSpy = vi
+    .spyOn(document, 'addEventListener')
+    .mockImplementation((type, listener, options) => {
+      registeredDocumentListeners.push({ type, listener, options })
+      addDocumentListener(type, listener, options)
+    })
+  try {
+    new Function(iifeSource())()
+  } finally {
+    addWindowListenerSpy.mockRestore()
+    addDocumentListenerSpy.mockRestore()
+  }
+  bootListenerCleanups.push(() => {
+    for (const { type, listener, options } of registeredWindowListeners) {
+      window.removeEventListener(type, listener, options)
+    }
+    for (const { type, listener, options } of registeredDocumentListeners) {
+      document.removeEventListener(type, listener, options)
+    }
+  })
   window.dispatchEvent(
     new MessageEvent('message', {
       data: JSON.stringify({ type: 'init', cols: 80, rows: 24, initialData: '', oscLinks })
@@ -127,6 +166,14 @@ function firePlainTap(x = 100, y = 100): void {
   fireTouch('touchend', [])
 }
 
+function fireKeyboardVisible(visible: boolean): void {
+  window.dispatchEvent(
+    new MessageEvent('message', {
+      data: JSON.stringify({ type: 'keyboard-visible', visible })
+    })
+  )
+}
+
 // Wait one macrotask so init()'s rAF chain (term.open -> ready) settles.
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 50))
 
@@ -143,7 +190,12 @@ describe('terminal WebView tap routing', () => {
     Object.defineProperty(window, 'innerHeight', { value: 400, configurable: true })
   })
 
-  afterEach(() => vi.useRealTimers())
+  afterEach(() => {
+    for (const cleanup of bootListenerCleanups.splice(0)) {
+      cleanup()
+    }
+    vi.useRealTimers()
+  })
 
   it('posts open-url when a clean tap lands on a URL', async () => {
     const { posted } = boot(URL_LINE)
@@ -182,6 +234,25 @@ describe('terminal WebView tap routing', () => {
     expect(
       posted.filter((message) => message.type === 'terminal-plain-tap-cancelled')
     ).toHaveLength(1)
+  })
+
+  it('keeps mouse-tracking TUI swipes when the keyboard is visible', async () => {
+    const { posted } = boot('interactive prompt', undefined, 'drag')
+    await settle()
+    fireKeyboardVisible(true)
+    posted.length = 0
+
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireTouch('touchmove', [{ x: 100, y: 160 }])
+    fireTouch('touchend', [])
+
+    const inputs = posted
+      .filter((message) => message.type === 'terminal-input')
+      .map((message) => message.bytes)
+    expect(inputs.length).toBeGreaterThan(0)
+    expect(inputs).not.toContain('\x1b[A')
+    expect(inputs).not.toContain('\x1b[B')
+    expect(document.getElementById('terminal-swipe-indicator')?.hidden).toBe(true)
   })
 
   it('reports a non-mouse touch tap without terminal mouse bytes', async () => {
@@ -391,9 +462,10 @@ describe('terminal WebView tap routing', () => {
     expect(posted.find((m) => m.type === 'terminal-plain-tap-cancelled')).toBeDefined()
   })
 
-  it('sends one arrow only when the second tap moves and suppresses tap routing', async () => {
+  it('sends all four arrows on keyboard-visible swipes and suppresses tap routing', async () => {
     const { posted, scrollLines } = boot(URL_LINE, undefined, 'none', 20)
     await settle()
+    fireKeyboardVisible(true)
 
     for (const [x, y] of [
       [100, 60],
@@ -401,7 +473,6 @@ describe('terminal WebView tap routing', () => {
       [140, 100],
       [60, 100]
     ] as const) {
-      firePlainTap()
       fireTouch('touchstart', [{ x: 100, y: 100 }])
       fireTouch('touchmove', [{ x, y }])
       fireTouch('touchend', [])
@@ -411,15 +482,15 @@ describe('terminal WebView tap routing', () => {
     ).toEqual(['\x1b[A', '\x1b[B', '\x1b[C', '\x1b[D'])
     expect(scrollLines).not.toHaveBeenCalled()
     expect(posted.find((message) => message.type === 'open-url')).toBeUndefined()
-    expect(posted.filter((message) => message.type === 'terminal-plain-tap')).toHaveLength(4)
+    expect(posted.filter((message) => message.type === 'terminal-plain-tap')).toHaveLength(0)
   })
 
   it('repeats only after the swiped finger stays down for 400ms', async () => {
     const { posted } = boot('plain prompt')
     await settle()
     vi.useFakeTimers()
+    fireKeyboardVisible(true)
 
-    firePlainTap()
     posted.length = 0
     fireTouch('touchstart', [{ x: 100, y: 100 }])
     fireTouch('touchmove', [{ x: 140, y: 100 }])
@@ -436,8 +507,8 @@ describe('terminal WebView tap routing', () => {
     const { posted } = boot('plain prompt')
     await settle()
     vi.useFakeTimers()
+    fireKeyboardVisible(true)
 
-    firePlainTap()
     posted.length = 0
     fireTouch('touchstart', [{ x: 100, y: 100 }])
     fireTouch('touchmove', [{ x: 140, y: 100 }])
@@ -465,17 +536,15 @@ describe('terminal WebView tap routing', () => {
     expect(posted.find((message) => message.type === 'terminal-input')).toBeUndefined()
   })
 
-  it('returns to normal scrolling when the second touch starts after 300ms', async () => {
+  it('keeps normal scrolling for a second touch inside the double-tap window when the keyboard is hidden', async () => {
     const { posted, scrollLines } = boot('plain prompt', undefined, 'none', 20)
     await settle()
-    vi.useFakeTimers()
 
     firePlainTap()
-    vi.advanceTimersByTime(301)
     scrollLines.mockClear()
     fireTouch('touchstart', [{ x: 100, y: 100 }])
     fireTouch('touchmove', [{ x: 100, y: 160 }])
-    vi.runOnlyPendingTimers()
+    await settle()
     fireTouch('touchend', [])
 
     expect(scrollLines).toHaveBeenCalled()
@@ -485,6 +554,7 @@ describe('terminal WebView tap routing', () => {
   it('blocks scrolling throughout the second tap before sending Tab or an arrow', async () => {
     const { posted, scrollLines } = boot('plain prompt', undefined, 'none', 20)
     await settle()
+    fireKeyboardVisible(true)
 
     firePlainTap()
     scrollLines.mockClear()
@@ -498,35 +568,32 @@ describe('terminal WebView tap routing', () => {
     expect(posted.find((message) => message.type === 'terminal-input')).toBeUndefined()
   })
 
-  it('does not arm arrow input when the first tap activates a link', async () => {
+  it('opens links without arrow input while the keyboard is visible', async () => {
     const { posted, scrollLines } = boot(URL_LINE, undefined, 'none', 20)
     await settle()
+    fireKeyboardVisible(true)
 
     firePlainTap(tapX, tapY)
-    scrollLines.mockClear()
-    fireTouch('touchstart', [{ x: 100, y: 100 }])
-    fireTouch('touchmove', [{ x: 100, y: 160 }])
-    await settle()
-    fireTouch('touchend', [])
 
     expect(posted.find((message) => message.type === 'open-url')).toBeDefined()
     expect(posted.find((message) => message.type === 'terminal-input')).toBeUndefined()
+    expect(scrollLines).not.toHaveBeenCalled()
   })
 
   it('stops held repeats on cancellation and pinch', async () => {
     const { posted } = boot('plain prompt')
     await settle()
     vi.useFakeTimers()
+    fireKeyboardVisible(true)
 
-    firePlainTap()
     posted.length = 0
     fireTouch('touchstart', [{ x: 100, y: 100 }])
     fireTouch('touchmove', [{ x: 140, y: 100 }])
     fireTouch('touchcancel', [])
     vi.advanceTimersByTime(1000)
     expect(posted.filter((message) => message.type === 'terminal-input')).toHaveLength(1)
+    expect(document.getElementById('terminal-swipe-indicator')?.hidden).toBe(true)
 
-    firePlainTap()
     fireTouch('touchstart', [{ x: 100, y: 100 }])
     fireTouch('touchmove', [{ x: 140, y: 100 }])
     fireTouch('touchstart', [
@@ -535,5 +602,105 @@ describe('terminal WebView tap routing', () => {
     ])
     vi.advanceTimersByTime(1000)
     expect(posted.filter((message) => message.type === 'terminal-input')).toHaveLength(2)
+    expect(document.getElementById('terminal-swipe-indicator')?.hidden).toBe(true)
+  })
+
+  it('keeps a keyboard-visible long press in selection mode', async () => {
+    const { posted } = boot('plain prompt')
+    await settle()
+    vi.useFakeTimers()
+    fireKeyboardVisible(true)
+    posted.length = 0
+
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    vi.advanceTimersByTime(500)
+    fireTouch('touchmove', [{ x: 140, y: 100 }])
+
+    expect(posted).toContainEqual({ type: 'set-select-mode', enabled: true })
+    expect(posted.find((message) => message.type === 'terminal-input')).toBeUndefined()
+    expect(document.getElementById('terminal-swipe-indicator')?.hidden).toBe(true)
+    fireTouch('touchend', [])
+  })
+
+  it('sends an arrow on the first keyboard-visible move and shows its origin and direction', async () => {
+    const { posted, scrollLines } = boot('plain prompt', undefined, 'none', 20)
+    await settle()
+    vi.useFakeTimers()
+    fireKeyboardVisible(true)
+
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireTouch('touchmove', [{ x: 140, y: 100 }])
+
+    expect(posted.filter((message) => message.type === 'terminal-input')).toEqual([
+      { type: 'terminal-input', bytes: '\x1b[C' }
+    ])
+    expect(posted.filter((message) => message.type === 'terminal-plain-tap')).toHaveLength(0)
+    expect(scrollLines).not.toHaveBeenCalled()
+    const indicator = document.getElementById('terminal-swipe-indicator')
+    expect(indicator).not.toBeNull()
+    expect(indicator?.hidden).toBe(false)
+    expect(indicator?.dataset.startX).toBe('100')
+    expect(indicator?.dataset.startY).toBe('100')
+    expect(indicator?.dataset.currentDirection).toBe('right')
+  })
+
+  it('repeats the current keyboard-visible direction and switches immediately on a new axis', async () => {
+    const { posted } = boot('plain prompt')
+    await settle()
+    vi.useFakeTimers()
+    fireKeyboardVisible(true)
+
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireTouch('touchmove', [{ x: 140, y: 100 }])
+    vi.advanceTimersByTime(400)
+    fireTouch('touchmove', [{ x: 100, y: 60 }])
+
+    expect(
+      posted.filter((message) => message.type === 'terminal-input').map((message) => message.bytes)
+    ).toEqual(['\x1b[C', '\x1b[C', '\x1b[A'])
+    expect(document.getElementById('terminal-swipe-indicator')?.dataset.currentDirection).toBe('up')
+
+    vi.advanceTimersByTime(400)
+    expect(
+      posted.filter((message) => message.type === 'terminal-input').map((message) => message.bytes)
+    ).toEqual(['\x1b[C', '\x1b[C', '\x1b[A', '\x1b[A'])
+    fireTouch('touchend', [])
+  })
+
+  it('keeps the keyboard-visible mode latched for a gesture and restores scroll after release', async () => {
+    const { posted, scrollLines } = boot('plain prompt', undefined, 'none', 20)
+    await settle()
+    fireKeyboardVisible(true)
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireKeyboardVisible(false)
+    fireTouch('touchmove', [{ x: 140, y: 100 }])
+    fireTouch('touchend', [])
+
+    expect(posted.find((message) => message.type === 'terminal-input')).toMatchObject({
+      type: 'terminal-input',
+      bytes: '\x1b[C'
+    })
+    expect(scrollLines).not.toHaveBeenCalled()
+
+    await Promise.resolve()
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireKeyboardVisible(true)
+    fireTouch('touchmove', [{ x: 100, y: 160 }])
+    await settle()
+    expect(scrollLines).toHaveBeenCalled()
+  })
+
+  it('keeps a movement-free keyboard-visible double tap on the plain-tap Tab path', async () => {
+    const { posted, scrollLines } = boot('plain prompt', undefined, 'none', 20)
+    await settle()
+    fireKeyboardVisible(true)
+
+    firePlainTap()
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireTouch('touchend', [])
+
+    expect(posted.find((message) => message.type === 'terminal-input')).toBeUndefined()
+    expect(posted.filter((message) => message.type === 'terminal-plain-tap')).toHaveLength(2)
+    expect(scrollLines).not.toHaveBeenCalled()
   })
 })

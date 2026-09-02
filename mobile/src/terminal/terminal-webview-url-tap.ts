@@ -205,10 +205,7 @@ export const URL_TAP_WEBVIEW_JS = `
     } catch (e) { return 0; }
   }
 
-  var pendingTerminalPlainTapAt = 0;
-
   function cancelTerminalPlainTap() {
-    pendingTerminalPlainTapAt = 0;
     notify({ type: 'terminal-plain-tap-cancelled' });
   }
 
@@ -264,7 +261,6 @@ export const URL_TAP_WEBVIEW_JS = `
     }
     var mouseTrackingTap = isClickMouseTrackingMode(getMouseTrackingMode());
     if (focusKeyboard && !mouseTrackingTap && !unsupportedOscLink) {
-      pendingTerminalPlainTapAt = Date.now();
       notify({ type: 'terminal-plain-tap' });
     } else if (focusKeyboard) {
       cancelTerminalPlainTap();
