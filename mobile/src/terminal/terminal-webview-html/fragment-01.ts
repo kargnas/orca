@@ -74,6 +74,37 @@ window.onerror = function(msg) {
     background: ${colors.textSecondary};
     will-change: transform, height;
   }
+  #terminal-swipe-indicator {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+    z-index: 8;
+  }
+  #terminal-swipe-indicator svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  #terminal-swipe-origin {
+    fill: ${colors.accentBlue};
+    fill-opacity: 0.16;
+    stroke: ${colors.accentBlue};
+    stroke-width: 2;
+  }
+  #terminal-swipe-vector {
+    stroke: ${colors.accentBlue};
+    stroke-width: 3;
+    stroke-linecap: round;
+  }
+  #terminal-swipe-direction {
+    fill: ${colors.accentBlue};
+    font: 600 22px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    text-anchor: middle;
+    dominant-baseline: central;
+  }
   /* Why: selection overlay sits in unscaled viewport coords, above the
      transformed surface, so handle hit areas and Copy menu positions
      don't depend on getTotalScale() for their on-screen size. */
@@ -151,6 +182,13 @@ window.onerror = function(msg) {
   <div id="terminal-surface"></div>
 </div>
 <div id="scroll-indicator"><div id="scroll-thumb"></div></div>
+<div id="terminal-swipe-indicator" hidden aria-hidden="true">
+  <svg>
+    <circle id="terminal-swipe-origin" r="18"></circle>
+    <line id="terminal-swipe-vector"></line>
+    <text id="terminal-swipe-direction"></text>
+  </svg>
+</div>
 <div id="selection-overlay">
   <div id="sel-handle-start" class="sel-handle start"></div>
   <div id="sel-handle-end" class="sel-handle end"></div>
