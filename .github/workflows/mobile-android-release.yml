@@ -5,8 +5,13 @@ name: Mobile Android Release
 # immediately without waiting on iOS, and vice versa.
 on:
   push:
+    branches:
+      - main
     tags:
       - 'mobile-android-v*'
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-android-release.yml'
   workflow_dispatch:
     inputs:
       release_version:
@@ -19,8 +24,15 @@ on:
         default: true
         type: boolean
 
+concurrency:
+  group: mobile-android-release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
 jobs:
   android-build:
+    # Why: main-push releases are for the private fork; tag and manual releases
+    # keep their existing behavior in every repository.
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main' || github.repository == 'kargnas/orca'
     runs-on: ubuntu-latest
 
     # Why: the "Create GitHub Release" step below uses the default GITHUB_TOKEN
@@ -55,7 +67,7 @@ jobs:
         id: release
         env:
           MOBILE_ANDROID_RELEASE_VERSION: ${{ github.event.inputs.release_version }}
-          MOBILE_ANDROID_PUBLISH_RELEASE: ${{ github.event.inputs.publish_github_release }}
+          MOBILE_ANDROID_PUBLISH_RELEASE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event.inputs.publish_github_release }}
         run: node scripts/prepare-android-release.mjs
 
       - name: Setup JDK 17
@@ -82,8 +94,17 @@ jobs:
           set -euo pipefail
           tag="${{ steps.release.outputs.tag }}"
 
-          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-            echo "Tag $tag already exists"
+          remote_target="$(git ls-remote --tags origin "refs/tags/$tag" | awk 'NR == 1 { print $1 }')"
+          if [[ -n "$remote_target" ]]; then
+            if [[ "$GITHUB_REF" != "refs/heads/main" || "$remote_target" == "$GITHUB_SHA" ]]; then
+              echo "Tag $tag already targets the requested release"
+              exit 0
+            fi
+
+            # Why: one prerelease belongs to each committed app version, so a
+            # later main build of that version must keep its source tag aligned.
+            git tag --force "$tag" "$GITHUB_SHA"
+            git push --force-with-lease="refs/tags/$tag:$remote_target" origin "refs/tags/$tag"
             exit 0
           fi
 
