@@ -43,6 +43,7 @@ export function useMobileSessionScreenState(scope: MobileSessionFoundationModel)
   // Why: terminal command-bar autocomplete opt-in, reloaded on focus so a Settings → Terminal toggle takes effect on return.
   const [autocompleteEnabled, setAutocompleteEnabled] = useState(false)
   const [terminalKeyboardResizeEnabled, setTerminalKeyboardResizeEnabled] = useState(false)
+  const [terminalTapKeyboardEnabled, setTerminalTapKeyboardEnabled] = useState(true)
   const [terminalLinkOpenMode, setTerminalLinkOpenMode] =
     useState<MobileTerminalLinkOpenMode>('orca-browser')
   const [liveInputCapture, setLiveInputCapture] = useState('')
@@ -156,6 +157,8 @@ export function useMobileSessionScreenState(scope: MobileSessionFoundationModel)
     setAutocompleteEnabled,
     terminalKeyboardResizeEnabled,
     setTerminalKeyboardResizeEnabled,
+    terminalTapKeyboardEnabled,
+    setTerminalTapKeyboardEnabled,
     terminalLinkOpenMode,
     setTerminalLinkOpenMode,
     liveInputCapture,

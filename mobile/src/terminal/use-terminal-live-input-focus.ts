@@ -11,6 +11,7 @@ type TerminalLiveInputFocusContext = {
   readonly canSend: boolean
   readonly keyboardHeight: number
   readonly liveInputEnabled: boolean
+  readonly terminalTapKeyboardEnabled: boolean
 }
 
 type UseTerminalLiveInputFocusOptions<T extends TerminalLiveInputFocusTarget> =
@@ -36,16 +37,18 @@ export function useTerminalLiveInputFocus<T extends TerminalLiveInputFocusTarget
   lifecycleIdentity,
   lifecycleKey,
   liveInputEnabled,
+  terminalTapKeyboardEnabled,
   timerRef
 }: UseTerminalLiveInputFocusOptions<T>): TerminalLiveInputFocusHandlers {
   const contextRef = useRef<TerminalLiveInputFocusContext>({
     canSend,
     keyboardHeight,
-    liveInputEnabled
+    liveInputEnabled,
+    terminalTapKeyboardEnabled
   })
   useLayoutEffect(() => {
-    contextRef.current = { canSend, keyboardHeight, liveInputEnabled }
-  }, [canSend, keyboardHeight, liveInputEnabled])
+    contextRef.current = { canSend, keyboardHeight, liveInputEnabled, terminalTapKeyboardEnabled }
+  }, [canSend, keyboardHeight, liveInputEnabled, terminalTapKeyboardEnabled])
 
   const resetLiveInputFocus = useCallback(() => {
     clearTerminalLiveInputFocusTimer(timerRef)
@@ -69,7 +72,12 @@ export function useTerminalLiveInputFocus<T extends TerminalLiveInputFocusTarget
   const handleTerminalTap = useCallback(
     (handle: string) => {
       const context = contextRef.current
-      if (handle !== activeHandleRef.current || !context.canSend || !context.liveInputEnabled) {
+      if (
+        handle !== activeHandleRef.current ||
+        !context.canSend ||
+        !context.liveInputEnabled ||
+        !context.terminalTapKeyboardEnabled
+      ) {
         return
       }
       // WKWebView still owns first responder during its touchend notification.

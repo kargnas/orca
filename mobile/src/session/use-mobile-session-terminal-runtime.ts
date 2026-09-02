@@ -33,7 +33,8 @@ export function useMobileSessionTerminalRuntime(scope: MobileSessionScreenStateM
     liveInputTerminalHandlesRef,
     activeHandle,
     activeSessionTabId,
-    keyboardHeight
+    keyboardHeight,
+    terminalTapKeyboardEnabled
   } = scope
   // Why: WebView pushes terminal modes on every change so paste reads a synchronous snapshot — no round-trip.
   const ptyModesRef = useRef<Map<string, TerminalModes>>(new Map())
@@ -137,6 +138,7 @@ export function useMobileSessionTerminalRuntime(scope: MobileSessionScreenStateM
     lifecycleIdentity: client,
     lifecycleKey: JSON.stringify([hostId, worktreeId, connState]),
     liveInputEnabled,
+    terminalTapKeyboardEnabled,
     timerRef: liveInputFocusTimerRef
   })
   useFocusEffect(

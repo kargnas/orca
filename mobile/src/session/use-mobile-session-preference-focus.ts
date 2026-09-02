@@ -5,6 +5,7 @@ import {
   loadTerminalAutocompleteEnabled,
   loadTerminalKeyboardResizeEnabled,
   loadTerminalLinkOpenMode,
+  loadTerminalTapKeyboardEnabled,
   loadTerminalTextScale
 } from '../storage/preferences'
 import type { MobileSessionKeyboardStateModel } from './use-mobile-session-keyboard-state'
@@ -14,6 +15,7 @@ export function useMobileSessionPreferenceFocus(scope: MobileSessionKeyboardStat
     setTerminalTextScale,
     setAutocompleteEnabled,
     setTerminalKeyboardResizeEnabled,
+    setTerminalTapKeyboardEnabled,
     setTerminalLinkOpenMode
   } = scope
   // Why: pick up Settings → Terminal text size on return; panes stay mounted and update in place.
@@ -55,6 +57,23 @@ export function useMobileSessionPreferenceFocus(scope: MobileSessionKeyboardStat
       void loadTerminalKeyboardResizeEnabled().then((enabled) => {
         if (active) {
           setTerminalKeyboardResizeEnabled(enabled)
+        }
+      })
+      return () => {
+        active = false
+      }
+    }, [])
+  )
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'android') {
+        return
+      }
+      let active = true
+      void loadTerminalTapKeyboardEnabled().then((enabled) => {
+        if (active) {
+          setTerminalTapKeyboardEnabled(enabled)
         }
       })
       return () => {

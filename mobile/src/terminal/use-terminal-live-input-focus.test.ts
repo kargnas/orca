@@ -15,6 +15,7 @@ type HarnessProps = {
   readonly lifecycleIdentity: object | null
   readonly lifecycleKey: string
   readonly liveInputEnabled: boolean
+  readonly terminalTapKeyboardEnabled: boolean
   readonly timerRef: TerminalLiveInputFocusTimerRef
 }
 
@@ -83,7 +84,8 @@ function createHarness(initialProps: HarnessProps): {
 function connectedProps(
   inputRef: RefObject<TerminalLiveInputFocusTarget | null>,
   timerRef = createTimerRef(),
-  activeHandleRef: RefObject<string | null> = { current: 'terminal-a' }
+  activeHandleRef: RefObject<string | null> = { current: 'terminal-a' },
+  terminalTapKeyboardEnabled = true
 ): HarnessProps {
   return {
     activeHandleRef,
@@ -92,6 +94,7 @@ function connectedProps(
     lifecycleIdentity: null,
     lifecycleKey: 'host-a:worktree-a:connected',
     liveInputEnabled: true,
+    terminalTapKeyboardEnabled,
     timerRef
   }
 }
@@ -111,6 +114,20 @@ describe('terminal live input focus hook', () => {
 
     vi.runOnlyPendingTimers()
     expect(input.focus).toHaveBeenCalledTimes(1)
+    harness.unmount()
+  })
+
+  it('does not focus the live input when terminal tap keyboard is disabled', () => {
+    vi.useFakeTimers()
+    const input = createFocusTarget()
+    const harness = createHarness(
+      connectedProps({ current: input }, createTimerRef(), undefined, false)
+    )
+
+    harness.handlers().handleTerminalTap('terminal-a')
+    vi.runAllTimers()
+
+    expect(input.focus).not.toHaveBeenCalled()
     harness.unmount()
   })
 
@@ -220,9 +237,11 @@ describe('terminal live input focus hook', () => {
     harness.unmount()
   })
 
-  it('keeps the native focus target immediate outside the WebView tap path', () => {
+  it('keeps explicit native focus available when terminal tap keyboard is disabled', () => {
     const input = createFocusTarget()
-    const harness = createHarness(connectedProps({ current: input }))
+    const harness = createHarness(
+      connectedProps({ current: input }, createTimerRef(), undefined, false)
+    )
 
     harness.handlers().focusLiveInput()
 
