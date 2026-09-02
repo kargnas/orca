@@ -93,18 +93,26 @@ jobs:
         run: cd android && ./gradlew assembleRelease
 
       - name: Name release APK
+        id: apk
         env:
-          APK_NAME: orca-mobile-${{ steps.release.outputs.version }}-build${{ steps.release.outputs.android_version_code }}.apk
+          PRIVATE_MAIN_RELEASE: ${{ github.event_name == 'push' && github.repository == 'kargnas/orca' && github.ref == 'refs/heads/main' }}
         run: |
           set -euo pipefail
-          mv android/app/build/outputs/apk/release/app-release.apk \
-            "android/app/build/outputs/apk/release/$APK_NAME"
+          apk_path="android/app/build/outputs/apk/release/app-release.apk"
+          if [[ "$PRIVATE_MAIN_RELEASE" == "true" ]]; then
+            apk_name="orca-mobile-${{ steps.release.outputs.version }}-build${{ steps.release.outputs.android_version_code }}.apk"
+            mv "$apk_path" "android/app/build/outputs/apk/release/$apk_name"
+          else
+            apk_name="app-release.apk"
+          fi
+          apk_path="android/app/build/outputs/apk/release/$apk_name"
+          echo "path=$apk_path" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         with:
           name: orca-mobile-apk
-          path: mobile/android/app/build/outputs/apk/release/orca-mobile-${{ steps.release.outputs.version }}-build${{ steps.release.outputs.android_version_code }}.apk
+          path: mobile/${{ steps.apk.outputs.path }}
 
       - name: Ensure GitHub release tag
         if: steps.release.outputs.publish_release == 'true' && !startsWith(github.ref, 'refs/tags/mobile-android-v')
@@ -141,7 +149,7 @@ jobs:
             gh release upload "$tag" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber \
-              android/app/build/outputs/apk/release/orca-mobile-${{ steps.release.outputs.version }}-build${{ steps.release.outputs.android_version_code }}.apk
+              ${{ steps.apk.outputs.path }}
           else
             gh release create "$tag" \
               --repo "$GITHUB_REPOSITORY" \
@@ -149,5 +157,5 @@ jobs:
               --prerelease \
               --latest=false \
               --generate-notes \
-              android/app/build/outputs/apk/release/orca-mobile-${{ steps.release.outputs.version }}-build${{ steps.release.outputs.android_version_code }}.apk
+              ${{ steps.apk.outputs.path }}
           fi

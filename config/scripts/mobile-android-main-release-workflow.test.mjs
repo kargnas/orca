@@ -55,18 +55,27 @@ describe('mobile Android main release workflow', () => {
     expect(ensureTag).toContain('refs/tags/$tag:$remote_target')
   })
 
-  it('publishes a versioned APK filename instead of the generic Gradle filename', () => {
-    const rename = stepNamed('Name release APK')
-    const upload = stepNamed('Upload APK artifact')
-    const release = stepNamed('Create GitHub Release')
+  it('uses a versioned APK only for private main releases', () => {
+    const apk = stepNamed('Name release APK')
     const apkName =
       'orca-mobile-${{ steps.release.outputs.version }}-build${{ steps.release.outputs.android_version_code }}.apk'
 
-    expect(rename?.env?.APK_NAME).toBe(apkName)
-    expect(rename?.run).toContain('mv')
-    expect(upload?.with?.path).toBe(`mobile/android/app/build/outputs/apk/release/${apkName}`)
-    expect(release?.run).toContain(`android/app/build/outputs/apk/release/${apkName}`)
-    expect(upload?.with?.path).not.toContain('app-release')
-    expect(release?.run).not.toContain('app-release*.apk')
+    expect(apk?.id).toBe('apk')
+    expect(apk?.env?.PRIVATE_MAIN_RELEASE).toBe(
+      "${{ github.event_name == 'push' && github.repository == 'kargnas/orca' && github.ref == 'refs/heads/main' }}"
+    )
+    expect(apk?.run).toContain('if [[ "$PRIVATE_MAIN_RELEASE" == "true" ]]')
+    expect(apk?.run).toContain('app-release.apk')
+    expect(apk?.run).toContain(apkName)
+  })
+
+  it('keeps the generic APK filename for public tag and manual releases', () => {
+    const apk = stepNamed('Name release APK')
+    const upload = stepNamed('Upload APK artifact')
+    const release = stepNamed('Create GitHub Release')
+
+    expect(apk?.run).toContain('apk_path="android/app/build/outputs/apk/release/app-release.apk"')
+    expect(upload?.with?.path).toBe('mobile/${{ steps.apk.outputs.path }}')
+    expect(release?.run).toContain('${{ steps.apk.outputs.path }}')
   })
 })
