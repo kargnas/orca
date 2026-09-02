@@ -12,6 +12,7 @@ type TerminalPaneViewProps = {
   handle: string
   active: boolean
   keyboardLift: number
+  keyboardVisible: boolean
   terminalTheme?: MobileTerminalTheme
   textScale: number
   onRef: (handle: string, ref: TerminalWebViewHandle | null) => void
@@ -36,6 +37,7 @@ export function TerminalPaneView({
   handle,
   active,
   keyboardLift,
+  keyboardVisible,
   terminalTheme,
   textScale,
   onRef,
@@ -77,6 +79,7 @@ export function TerminalPaneView({
         ref={setRef}
         style={styles.terminalWebView}
         terminalTheme={terminalTheme}
+        keyboardVisible={keyboardVisible}
         textScale={textScale}
         onWebReady={() => onWebReady(handle)}
         onSelectionMode={(a) => onSelectionMode(handle, a)}

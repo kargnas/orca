@@ -1,4 +1,4 @@
-import { Animated, View, Text, Pressable, ActivityIndicator } from 'react-native'
+import { Animated, View, Text, Pressable, ActivityIndicator, Platform } from 'react-native'
 import { saveTerminalTextScale } from '../storage/preferences'
 import { MobileBrowserPane } from '../browser/MobileBrowserPane'
 import { TerminalPaneView } from './TerminalPaneView'
@@ -79,6 +79,7 @@ export function MobileSessionActiveContent({
     showLoadingState,
     showEmptyState,
     keyboardLift,
+    keyboardHeight,
     activeTerminalKeyboardLift,
     toastAnimatedStyle,
     createTabBusy
@@ -211,6 +212,7 @@ export function MobileSessionActiveContent({
           handle={terminal.handle}
           active={terminal.handle === activeHandle}
           keyboardLift={terminal.handle === activeHandle ? activeTerminalKeyboardLift : 0}
+          keyboardVisible={Platform.OS === 'android' && keyboardHeight > 0}
           terminalTheme={terminal.terminalTheme}
           textScale={terminalTextScale}
           onTextScaleChange={(scale) => {
