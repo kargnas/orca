@@ -18,13 +18,15 @@ import { PickerModal, type PickerOption } from '../src/components/PickerModal'
 import { TerminalShortcutSettings } from '../src/components/TerminalShortcutSettings'
 import { setTerminalAutoRestoreFitMsForHost } from '../src/terminal/terminal-auto-restore-fit-state'
 import { terminalSettingsScreenStyles as styles } from '../src/terminal/terminal-settings-screen-styles'
+import {
+  TerminalKeyboardResizeSetting,
+  TerminalTapKeyboardSetting
+} from '../src/terminal/TerminalAndroidKeyboardSettings'
 import { useTerminalDoubleTapTabPreference } from '../src/terminal/use-terminal-double-tap-tab-preference'
 import {
   loadTerminalAutocompleteEnabled,
-  loadTerminalKeyboardResizeEnabled,
   loadTerminalTextScale,
   saveTerminalAutocompleteEnabled,
-  saveTerminalKeyboardResizeEnabled,
   saveTerminalTextScale
 } from '../src/storage/preferences'
 
@@ -178,25 +180,6 @@ export default function TerminalSettingsScreen() {
     userToggledAutocompleteRef.current = true
     setAutocompleteEnabled(next)
     void saveTerminalAutocompleteEnabled(next)
-  }, [])
-
-  const [keyboardResizeEnabled, setKeyboardResizeEnabled] = useState(false)
-  const userToggledKeyboardResizeRef = useRef(false)
-  useEffect(() => {
-    let stale = false
-    void loadTerminalKeyboardResizeEnabled().then((enabled) => {
-      if (!stale && !userToggledKeyboardResizeRef.current) {
-        setKeyboardResizeEnabled(enabled)
-      }
-    })
-    return () => {
-      stale = true
-    }
-  }, [])
-  const toggleKeyboardResize = useCallback((next: boolean) => {
-    userToggledKeyboardResizeRef.current = true
-    setKeyboardResizeEnabled(next)
-    void saveTerminalKeyboardResizeEnabled(next)
   }, [])
 
   const { enabled: doubleTapTabEnabled, setEnabled: toggleDoubleTapTab } =
@@ -372,7 +355,11 @@ export default function TerminalSettingsScreen() {
               thumbColor={colors.textPrimary}
             />
           </View>
-          <View style={styles.separator} />
+          {Platform.OS === 'android' ? (
+            <TerminalTapKeyboardSetting />
+          ) : (
+            <View style={styles.separator} />
+          )}
           <View style={styles.row}>
             <View style={styles.rowContent}>
               <Text style={styles.rowLabel}>Double-tap sends Tab</Text>
@@ -389,27 +376,7 @@ export default function TerminalSettingsScreen() {
           </View>
         </View>
 
-        {Platform.OS === 'android' && (
-          <>
-            <Text style={[styles.groupHeading, styles.inputGroupGap]}>KEYBOARD LAYOUT</Text>
-            <Text style={styles.groupDescription}>
-              Reduce terminal rows to the visible area while the on-screen keyboard is open.
-            </Text>
-            <View style={[styles.section, styles.sectionTopGap]}>
-              <View style={styles.row}>
-                <View style={styles.rowContent}>
-                  <Text style={styles.rowLabel}>Resize terminal for keyboard</Text>
-                </View>
-                <Switch
-                  value={keyboardResizeEnabled}
-                  onValueChange={toggleKeyboardResize}
-                  trackColor={{ false: colors.bgRaised, true: colors.textSecondary }}
-                  thumbColor={colors.textPrimary}
-                />
-              </View>
-            </View>
-          </>
-        )}
+        {Platform.OS === 'android' && <TerminalKeyboardResizeSetting />}
 
         <TerminalShortcutSettings
           scrollRef={scrollRef}
