@@ -49,6 +49,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
 
       - name: Free runner disk space
         # Why: the mobile dependency tree and Gradle build exceed the default Ubuntu runner's free space.
@@ -99,13 +101,15 @@ jobs:
         run: |
           set -euo pipefail
           apk_path="android/app/build/outputs/apk/release/app-release.apk"
+          short_sha="${GITHUB_SHA:0:7}"
           if [[ "$PRIVATE_MAIN_RELEASE" == "true" ]]; then
-            apk_name="orca-mobile-${{ steps.release.outputs.version }}-build${{ steps.release.outputs.android_version_code }}.apk"
+            apk_name="orca-mobile-${{ steps.release.outputs.version }}-build${{ steps.release.outputs.android_version_code }}-${short_sha}-run${GITHUB_RUN_ID}-attempt${GITHUB_RUN_ATTEMPT}.apk"
             mv "$apk_path" "android/app/build/outputs/apk/release/$apk_name"
-          else
-            apk_name="app-release.apk"
+            apk_path="android/app/build/outputs/apk/release/$apk_name"
+            checksum_path="$apk_path.sha256"
+            (cd "$(dirname "$apk_path")" && sha256sum "$apk_name" > "$apk_name.sha256")
+            echo "checksum_path=$checksum_path" >> "$GITHUB_OUTPUT"
           fi
-          apk_path="android/app/build/outputs/apk/release/$apk_name"
           echo "path=$apk_path" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
@@ -141,15 +145,33 @@ jobs:
         if: steps.release.outputs.publish_release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          PRIVATE_MAIN_RELEASE: ${{ github.event_name == 'push' && github.repository == 'kargnas/orca' && github.ref == 'refs/heads/main' }}
         run: |
           set -euo pipefail
           tag="${{ steps.release.outputs.tag }}"
+          apk_path="${{ steps.apk.outputs.path }}"
+          checksum_path="${{ steps.apk.outputs.checksum_path }}"
 
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if [[ "$PRIVATE_MAIN_RELEASE" == "true" ]]; then
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release upload "$tag" \
+                --repo "$GITHUB_REPOSITORY" \
+                "$apk_path" "$checksum_path"
+            else
+              gh release create "$tag" \
+                --repo "$GITHUB_REPOSITORY" \
+                --title "Orca Mobile Android $tag" \
+                --prerelease \
+                --latest=false \
+                --generate-notes \
+                --target "$GITHUB_SHA" \
+                "$apk_path" "$checksum_path"
+            fi
+          elif gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber \
-              ${{ steps.apk.outputs.path }}
+              "$apk_path"
           else
             gh release create "$tag" \
               --repo "$GITHUB_REPOSITORY" \
@@ -157,5 +179,5 @@ jobs:
               --prerelease \
               --latest=false \
               --generate-notes \
-              ${{ steps.apk.outputs.path }}
+              "$apk_path"
           fi
