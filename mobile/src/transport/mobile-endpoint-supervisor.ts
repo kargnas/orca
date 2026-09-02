@@ -21,7 +21,7 @@ import { MobileRelaySessionEstablisher } from './mobile-relay-session-establishe
 import * as recoveryPresentation from './mobile-relay-recovery-presentation'
 import type { StableLogicalRpcClient } from './stable-logical-rpc-client'
 import type { ForegroundNudgeReason, HostProfile } from './types'
-import { MobileRelayBackgroundRetention } from './mobile-relay-background-retention'
+import { MobileRelayBackgroundGrace } from './mobile-relay-background-grace'
 import {
   logRelayConnected,
   logRelayCredentialUnavailable,
@@ -49,7 +49,7 @@ export class MobileEndpointSupervisor {
   private readonly logRelay: RelayRecoveryLog
   private readonly directProbe: DirectReturnProbe
   private readonly directGrace: MobileRelayDirectGraceTimer
-  private readonly backgroundRetention: MobileRelayBackgroundRetention
+  private readonly backgroundGrace: MobileRelayBackgroundGrace
   private readonly sessionEstablisher: MobileRelaySessionEstablisher
 
   constructor(
@@ -70,7 +70,7 @@ export class MobileEndpointSupervisor {
       logical,
       controller: this.relayReconnect,
       isStopped: () => this.stopped,
-      isForeground: () => this.backgroundRetention.isForeground(),
+      isForeground: () => this.backgroundGrace.isForeground(),
       setForeground: (foreground) => this.setForeground(foreground),
       replaceRelay: () => void this.recoverRelay(true, true),
       scheduleDirectProbe: () => this.directProbe.schedule(0)
@@ -92,7 +92,7 @@ export class MobileEndpointSupervisor {
       randomBytes: dependencies.randomBytes,
       writeBundle: dependencies.writeBundle,
       isActive: () => this.isActive(),
-      isForeground: () => this.backgroundRetention.isForeground(),
+      isForeground: () => this.backgroundGrace.isForeground(),
       relay: () => this.host.relay,
       resolveRelay: dependencies.resolveRelay,
       persistResolvedRelay: async (resolved) => {
@@ -137,7 +137,8 @@ export class MobileEndpointSupervisor {
         }
       }
     })
-    this.backgroundRetention = new MobileRelayBackgroundRetention(
+    this.backgroundGrace = new MobileRelayBackgroundGrace(
+      dependencies,
       logical,
       this.relayReconnect,
       this.leaseRotation,
@@ -163,8 +164,8 @@ export class MobileEndpointSupervisor {
           void this.rotateCredentialIfNeeded(this.relayReconnect.resetForDirectConnection())
         }
         this.directProbe.schedule()
-      } else if (!this.backgroundRetention.isForeground()) {
-        this.backgroundRetention.handleStateFailure()
+      } else if (!this.backgroundGrace.isForeground()) {
+        this.backgroundGrace.handleStateFailure()
       } else {
         // Why: the direct client enters reconnecting after its first failed
         // dial and may never publish disconnected while its retry loop lives.
@@ -184,7 +185,7 @@ export class MobileEndpointSupervisor {
   }
 
   setForeground(foreground: boolean): void {
-    this.backgroundRetention.setForeground(foreground)
+    this.backgroundGrace.setForeground(foreground)
     if (foreground && this.relayRotationPending) {
       void this.recoverRelay(true)
     }
@@ -196,11 +197,11 @@ export class MobileEndpointSupervisor {
     this.stopped = true
     this.unsubscribeState?.()
     this.unsubscribeState = null
-    this.backgroundRetention.stop()
+    this.backgroundGrace.stop()
   }
 
   private isActive(): boolean {
-    return !this.stopped && this.backgroundRetention.isForeground()
+    return !this.stopped && this.backgroundGrace.isForeground()
   }
 
   // forceReplacement: dial past the "direct still looks live" guard — a lease

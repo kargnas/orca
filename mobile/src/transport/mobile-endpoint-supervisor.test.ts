@@ -663,10 +663,11 @@ describe('mobile endpoint supervisor', () => {
     await vi.advanceTimersByTimeAsync(0)
 
     expect(openRelay).toHaveBeenCalledTimes(2)
-    expect(vi.getTimerCount()).toBe(0)
-    await vi.advanceTimersByTimeAsync(6 * 3_600_000)
-    expect(logical.suspendActiveSession).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(1)
+    await vi.advanceTimersByTimeAsync(180_000)
+    expect(logical.suspendActiveSession).toHaveBeenCalledOnce()
     expect(openRelay).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(0)
     supervisor.stop()
   })
 

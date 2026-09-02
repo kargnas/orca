@@ -429,7 +429,7 @@ describe('relay runtime recovery without direct connectivity', () => {
     supervisor.stop()
   })
 
-  it('restarts a Relay that died while backgrounded as soon as the app returns', async () => {
+  it('restarts Relay promptly after the background grace expires', async () => {
     const logical = new FakeLogicalClient('connected', 'relay')
     const deps = dependencies({ openDirect: vi.fn(() => new FakeSession('disconnected')) })
     const supervisor = new MobileEndpointSupervisor(logical, host, deps)
@@ -438,11 +438,10 @@ describe('relay runtime recovery without direct connectivity', () => {
     expect(deps.openRelay).not.toHaveBeenCalled()
 
     supervisor.setForeground(false)
-    await vi.advanceTimersByTimeAsync(10 * 60_000)
     expect(logical.getState()).toBe('connected')
-    logical.publishState('disconnected')
+    await vi.advanceTimersByTimeAsync(180_000)
+    expect(logical.getState()).toBe('disconnected')
     expect(logical.getPendingPath()).toBeNull()
-    expect(deps.openRelay).not.toHaveBeenCalled()
 
     supervisor.setForeground(true)
     await vi.advanceTimersByTimeAsync(0)
@@ -453,15 +452,15 @@ describe('relay runtime recovery without direct connectivity', () => {
     supervisor.stop()
   })
 
-  it('recovers a Relay that died while backgrounded through the app-resume manual retry nudge', async () => {
+  it('recovers an expired background Relay through the app-resume manual retry nudge', async () => {
     const logical = new FakeLogicalClient('connected', 'relay')
     const deps = dependencies({ openDirect: vi.fn(() => new FakeSession('disconnected')) })
     const supervisor = new MobileEndpointSupervisor(logical, host, deps)
 
     await supervisor.start()
     supervisor.setForeground(false)
-    logical.publishState('disconnected')
-    expect(deps.openRelay).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(180_000)
+    expect(logical.getState()).toBe('disconnected')
 
     supervisor.nudge('app-resume')
     await vi.advanceTimersByTimeAsync(0)
