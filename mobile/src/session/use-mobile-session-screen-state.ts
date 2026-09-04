@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useCallback } from 'react'
 import { Animated, type ScrollView } from 'react-native'
 import type { MobileTerminalLinkOpenMode } from '../storage/preferences'
 import type { TerminalKeyboardAvoidanceMetrics } from '../terminal/terminal-webview-contract'
@@ -47,6 +47,11 @@ export function useMobileSessionScreenState(scope: MobileSessionFoundationModel)
   const [terminalLinkOpenMode, setTerminalLinkOpenMode] =
     useState<MobileTerminalLinkOpenMode>('orca-browser')
   const [liveInputCapture, setLiveInputCapture] = useState('')
+  // Why: transient per-screen input mode (swipe = arrows, double tap = Tab), so it resets to scrolling on every visit.
+  const [arrowGesturesEnabled, setArrowGesturesEnabled] = useState(false)
+  const toggleArrowGestures = useCallback(() => {
+    setArrowGesturesEnabled((prev) => !prev)
+  }, [])
   const {
     clearTerminalLiveInputDefault,
     defaultTerminalHandlesToLiveInput,
@@ -163,6 +168,8 @@ export function useMobileSessionScreenState(scope: MobileSessionFoundationModel)
     setTerminalLinkOpenMode,
     liveInputCapture,
     setLiveInputCapture,
+    arrowGesturesEnabled,
+    toggleArrowGestures,
     clearTerminalLiveInputDefault,
     defaultTerminalHandlesToLiveInput,
     liveInputTerminalHandles,

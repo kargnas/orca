@@ -22,7 +22,6 @@ import {
   TerminalKeyboardResizeSetting,
   TerminalTapKeyboardSetting
 } from '../src/terminal/TerminalAndroidKeyboardSettings'
-import { useTerminalDoubleTapTabPreference } from '../src/terminal/use-terminal-double-tap-tab-preference'
 import {
   loadTerminalAutocompleteEnabled,
   loadTerminalTextScale,
@@ -181,9 +180,6 @@ export default function TerminalSettingsScreen() {
     setAutocompleteEnabled(next)
     void saveTerminalAutocompleteEnabled(next)
   }, [])
-
-  const { enabled: doubleTapTabEnabled, setEnabled: toggleDoubleTapTab } =
-    useTerminalDoubleTapTabPreference()
 
   useEffect(() => {
     let cancelled = false
@@ -355,25 +351,7 @@ export default function TerminalSettingsScreen() {
               thumbColor={colors.textPrimary}
             />
           </View>
-          {Platform.OS === 'android' ? (
-            <TerminalTapKeyboardSetting />
-          ) : (
-            <View style={styles.separator} />
-          )}
-          <View style={styles.row}>
-            <View style={styles.rowContent}>
-              <Text style={styles.rowLabel}>Double-tap sends Tab</Text>
-              <Text style={styles.rowSublabel}>
-                {doubleTapTabEnabled ? 'On' : 'Off'} · Empty terminal space only
-              </Text>
-            </View>
-            <Switch
-              value={doubleTapTabEnabled}
-              onValueChange={toggleDoubleTapTab}
-              trackColor={{ false: colors.bgRaised, true: colors.textSecondary }}
-              thumbColor={colors.textPrimary}
-            />
-          </View>
+          {Platform.OS === 'android' && <TerminalTapKeyboardSetting />}
         </View>
 
         {Platform.OS === 'android' && <TerminalKeyboardResizeSetting />}

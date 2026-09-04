@@ -166,10 +166,10 @@ function firePlainTap(x = 100, y = 100): void {
   fireTouch('touchend', [])
 }
 
-function fireKeyboardVisible(visible: boolean): void {
+function fireArrowGestures(enabled: boolean): void {
   window.dispatchEvent(
     new MessageEvent('message', {
-      data: JSON.stringify({ type: 'keyboard-visible', visible })
+      data: JSON.stringify({ type: 'arrow-gestures', enabled })
     })
   )
 }
@@ -236,10 +236,10 @@ describe('terminal WebView tap routing', () => {
     ).toHaveLength(1)
   })
 
-  it('keeps mouse-tracking TUI swipes when the keyboard is visible', async () => {
+  it('keeps mouse-tracking TUI swipes in arrow-gesture mode', async () => {
     const { posted } = boot('interactive prompt', undefined, 'drag')
     await settle()
-    fireKeyboardVisible(true)
+    fireArrowGestures(true)
     posted.length = 0
 
     fireTouch('touchstart', [{ x: 100, y: 100 }])
@@ -462,10 +462,10 @@ describe('terminal WebView tap routing', () => {
     expect(posted.find((m) => m.type === 'terminal-plain-tap-cancelled')).toBeDefined()
   })
 
-  it('sends all four arrows on keyboard-visible swipes and suppresses tap routing', async () => {
+  it('sends all four arrows on arrow-gesture swipes and suppresses tap routing', async () => {
     const { posted, scrollLines } = boot(URL_LINE, undefined, 'none', 20)
     await settle()
-    fireKeyboardVisible(true)
+    fireArrowGestures(true)
 
     for (const [x, y] of [
       [100, 60],
@@ -489,7 +489,7 @@ describe('terminal WebView tap routing', () => {
     const { posted } = boot('plain prompt')
     await settle()
     vi.useFakeTimers()
-    fireKeyboardVisible(true)
+    fireArrowGestures(true)
 
     posted.length = 0
     fireTouch('touchstart', [{ x: 100, y: 100 }])
@@ -507,7 +507,7 @@ describe('terminal WebView tap routing', () => {
     const { posted } = boot('plain prompt')
     await settle()
     vi.useFakeTimers()
-    fireKeyboardVisible(true)
+    fireArrowGestures(true)
 
     posted.length = 0
     fireTouch('touchstart', [{ x: 100, y: 100 }])
@@ -536,7 +536,7 @@ describe('terminal WebView tap routing', () => {
     expect(posted.find((message) => message.type === 'terminal-input')).toBeUndefined()
   })
 
-  it('keeps normal scrolling for a second touch inside the double-tap window when the keyboard is hidden', async () => {
+  it('keeps normal scrolling for a second touch inside the double-tap window in scroll mode', async () => {
     const { posted, scrollLines } = boot('plain prompt', undefined, 'none', 20)
     await settle()
 
@@ -554,7 +554,7 @@ describe('terminal WebView tap routing', () => {
   it('blocks scrolling throughout the second tap before sending Tab or an arrow', async () => {
     const { posted, scrollLines } = boot('plain prompt', undefined, 'none', 20)
     await settle()
-    fireKeyboardVisible(true)
+    fireArrowGestures(true)
 
     firePlainTap()
     scrollLines.mockClear()
@@ -568,10 +568,10 @@ describe('terminal WebView tap routing', () => {
     expect(posted.find((message) => message.type === 'terminal-input')).toBeUndefined()
   })
 
-  it('opens links without arrow input while the keyboard is visible', async () => {
+  it('opens links without arrow input in arrow-gesture mode', async () => {
     const { posted, scrollLines } = boot(URL_LINE, undefined, 'none', 20)
     await settle()
-    fireKeyboardVisible(true)
+    fireArrowGestures(true)
 
     firePlainTap(tapX, tapY)
 
@@ -584,7 +584,7 @@ describe('terminal WebView tap routing', () => {
     const { posted } = boot('plain prompt')
     await settle()
     vi.useFakeTimers()
-    fireKeyboardVisible(true)
+    fireArrowGestures(true)
 
     posted.length = 0
     fireTouch('touchstart', [{ x: 100, y: 100 }])
@@ -605,11 +605,11 @@ describe('terminal WebView tap routing', () => {
     expect(document.getElementById('terminal-swipe-indicator')?.hidden).toBe(true)
   })
 
-  it('keeps a keyboard-visible long press in selection mode', async () => {
+  it('keeps an arrow-gesture long press in selection mode', async () => {
     const { posted } = boot('plain prompt')
     await settle()
     vi.useFakeTimers()
-    fireKeyboardVisible(true)
+    fireArrowGestures(true)
     posted.length = 0
 
     fireTouch('touchstart', [{ x: 100, y: 100 }])
@@ -622,11 +622,11 @@ describe('terminal WebView tap routing', () => {
     fireTouch('touchend', [])
   })
 
-  it('sends an arrow on the first keyboard-visible move and shows its origin and direction', async () => {
+  it('sends an arrow on the first arrow-gesture move and shows its origin and direction', async () => {
     const { posted, scrollLines } = boot('plain prompt', undefined, 'none', 20)
     await settle()
     vi.useFakeTimers()
-    fireKeyboardVisible(true)
+    fireArrowGestures(true)
 
     fireTouch('touchstart', [{ x: 100, y: 100 }])
     fireTouch('touchmove', [{ x: 140, y: 100 }])
@@ -644,11 +644,11 @@ describe('terminal WebView tap routing', () => {
     expect(indicator?.dataset.currentDirection).toBe('right')
   })
 
-  it('repeats the current keyboard-visible direction and switches immediately on a new axis', async () => {
+  it('repeats the current arrow-gesture direction and switches immediately on a new axis', async () => {
     const { posted } = boot('plain prompt')
     await settle()
     vi.useFakeTimers()
-    fireKeyboardVisible(true)
+    fireArrowGestures(true)
 
     fireTouch('touchstart', [{ x: 100, y: 100 }])
     fireTouch('touchmove', [{ x: 140, y: 100 }])
@@ -667,12 +667,12 @@ describe('terminal WebView tap routing', () => {
     fireTouch('touchend', [])
   })
 
-  it('keeps the keyboard-visible mode latched for a gesture and restores scroll after release', async () => {
+  it('keeps the arrow-gesture mode latched for a gesture and restores scroll after release', async () => {
     const { posted, scrollLines } = boot('plain prompt', undefined, 'none', 20)
     await settle()
-    fireKeyboardVisible(true)
+    fireArrowGestures(true)
     fireTouch('touchstart', [{ x: 100, y: 100 }])
-    fireKeyboardVisible(false)
+    fireArrowGestures(false)
     fireTouch('touchmove', [{ x: 140, y: 100 }])
     fireTouch('touchend', [])
 
@@ -684,16 +684,45 @@ describe('terminal WebView tap routing', () => {
 
     await Promise.resolve()
     fireTouch('touchstart', [{ x: 100, y: 100 }])
-    fireKeyboardVisible(true)
+    fireArrowGestures(true)
     fireTouch('touchmove', [{ x: 100, y: 160 }])
     await settle()
     expect(scrollLines).toHaveBeenCalled()
   })
 
-  it('keeps a movement-free keyboard-visible double tap on the plain-tap Tab path', async () => {
+  it('scrolls in scroll mode and sends arrows in arrow-gesture mode without the keyboard', async () => {
     const { posted, scrollLines } = boot('plain prompt', undefined, 'none', 20)
     await settle()
-    fireKeyboardVisible(true)
+
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireTouch('touchmove', [{ x: 100, y: 160 }])
+    fireTouch('touchend', [])
+    await settle()
+    expect(scrollLines).toHaveBeenCalled()
+    expect(posted.find((message) => message.type === 'terminal-input')).toBeUndefined()
+
+    fireArrowGestures(true)
+    scrollLines.mockClear()
+    for (const [x, y] of [
+      [100, 60],
+      [100, 140],
+      [140, 100],
+      [60, 100]
+    ] as const) {
+      fireTouch('touchstart', [{ x: 100, y: 100 }])
+      fireTouch('touchmove', [{ x, y }])
+      fireTouch('touchend', [])
+    }
+    expect(
+      posted.filter((message) => message.type === 'terminal-input').map((message) => message.bytes)
+    ).toEqual(['\x1b[A', '\x1b[B', '\x1b[C', '\x1b[D'])
+    expect(scrollLines).not.toHaveBeenCalled()
+  })
+
+  it('keeps a movement-free arrow-gesture double tap on the plain-tap Tab path', async () => {
+    const { posted, scrollLines } = boot('plain prompt', undefined, 'none', 20)
+    await settle()
+    fireArrowGestures(true)
 
     firePlainTap()
     fireTouch('touchstart', [{ x: 100, y: 100 }])

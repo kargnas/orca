@@ -24,7 +24,7 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(function
   {
     style,
     terminalTheme,
-    keyboardVisible = false,
+    arrowGesturesEnabled = false,
     textScale = 1,
     onWebReady,
     onEngineError,
@@ -49,8 +49,8 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(function
   const isWebReadyRef = useRef(false)
   const pendingMessages = useMemo(() => createTerminalWebViewPendingMessages(), [])
   const messageIdRef = useRef(0)
-  const keyboardVisibleRef = useRef(keyboardVisible)
-  keyboardVisibleRef.current = keyboardVisible
+  const arrowGesturesEnabledRef = useRef(arrowGesturesEnabled)
+  arrowGesturesEnabledRef.current = arrowGesturesEnabled
   const pendingPingIdRef = useRef<number | null>(null)
   const terminalThemeKey = useMemo(() => JSON.stringify(terminalTheme ?? null), [terminalTheme])
   const measureResolveRef = useRef<
@@ -76,9 +76,9 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(function
     return id
   }, [])
 
-  const sendKeyboardVisibility = useCallback(
-    (visible: boolean) => {
-      sendToWebView({ type: 'keyboard-visible', visible })
+  const sendArrowGestures = useCallback(
+    (enabled: boolean) => {
+      sendToWebView({ type: 'arrow-gestures', enabled })
     },
     [sendToWebView]
   )
@@ -124,14 +124,14 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(function
       // native-selected theme even when its value did not change in React.
       sendToWebView({ type: 'set-theme', terminalTheme })
       // Why: the touch dispatcher reads this synchronously while classifying gestures.
-      sendKeyboardVisibility(keyboardVisibleRef.current)
+      sendArrowGestures(arrowGesturesEnabledRef.current)
       flushPendingMessages()
     },
     [
       clearEngineError,
       clearWebReadyWatchdog,
       flushPendingMessages,
-      sendKeyboardVisibility,
+      sendArrowGestures,
       onWebReady,
       sendToWebView,
       terminalTheme
@@ -250,11 +250,11 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(function
   }, [postMessage, textScale])
 
   useEffect(() => {
-    keyboardVisibleRef.current = keyboardVisible
+    arrowGesturesEnabledRef.current = arrowGesturesEnabled
     if (isWebReadyRef.current) {
-      sendKeyboardVisibility(keyboardVisible)
+      sendArrowGestures(arrowGesturesEnabled)
     }
-  }, [keyboardVisible, sendKeyboardVisibility])
+  }, [arrowGesturesEnabled, sendArrowGestures])
 
   useImperativeHandle(
     ref,

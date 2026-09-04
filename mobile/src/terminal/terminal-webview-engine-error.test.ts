@@ -208,7 +208,7 @@ describe('TerminalWebView engine errors', () => {
     expect(postedCommands().map((command) => command.type)).toEqual([
       'ping',
       'set-theme',
-      'keyboard-visible',
+      'arrow-gestures',
       'write'
     ])
     expect(onWebReady).toHaveBeenCalledTimes(1)
@@ -257,44 +257,44 @@ describe('TerminalWebView engine errors', () => {
     postWebViewMessage(renderer, { type: 'web-ready' })
     expect(postedCommands().map((command) => command.type)).toEqual([
       'set-theme',
-      'keyboard-visible',
+      'arrow-gestures',
       'write'
     ])
   })
 
-  it('sends the latest keyboard visibility after readiness and reload', () => {
+  it('sends the latest arrow-gesture mode after readiness and reload', () => {
     const terminalTheme = {
       mode: 'dark',
       theme: { background: '#111111', foreground: '#eeeeee' }
     }
     const { renderer } = createTerminalWebViewRenderer(vi.fn(), {
-      keyboardVisible: false,
+      arrowGesturesEnabled: false,
       terminalTheme
     })
     postWebViewMessage(renderer, { type: 'web-ready' })
-    expect(
-      postedCommands().findLast((command) => command.type === 'keyboard-visible')
-    ).toMatchObject({ type: 'keyboard-visible', visible: false })
+    expect(postedCommands().findLast((command) => command.type === 'arrow-gestures')).toMatchObject(
+      { type: 'arrow-gestures', enabled: false }
+    )
 
     act(() => {
       renderer.update(
         createElement(TerminalWebView, {
-          keyboardVisible: true,
+          arrowGesturesEnabled: true,
           terminalTheme
         })
       )
     })
-    expect(
-      postedCommands().findLast((command) => command.type === 'keyboard-visible')
-    ).toMatchObject({ type: 'keyboard-visible', visible: true })
+    expect(postedCommands().findLast((command) => command.type === 'arrow-gestures')).toMatchObject(
+      { type: 'arrow-gestures', enabled: true }
+    )
 
     const webView = renderer.root.findByType('WebView')
     act(() => {
       webView.props.onLoadStart()
     })
     postWebViewMessage(renderer, { type: 'web-ready' })
-    expect(
-      postedCommands().findLast((command) => command.type === 'keyboard-visible')
-    ).toMatchObject({ type: 'keyboard-visible', visible: true })
+    expect(postedCommands().findLast((command) => command.type === 'arrow-gestures')).toMatchObject(
+      { type: 'arrow-gestures', enabled: true }
+    )
   })
 })

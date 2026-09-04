@@ -25,6 +25,7 @@ export function useMobileSessionAccessorySelection(scope: MobileSessionTerminalI
     worktreeId,
     connState,
     activeHandle,
+    arrowGesturesEnabled,
     isFloatingWorkspaceRoute,
     client,
     setTerminalKeyboardMetrics,
@@ -53,6 +54,7 @@ export function useMobileSessionAccessorySelection(scope: MobileSessionTerminalI
   // react-doctor-disable-next-line react-doctor/no-ref-current-in-render
   handleAccessoryKeyRef.current = handleAccessoryKey
   const { cancelPendingTap, shouldSendTabForTap } = useTerminalDoubleTapTab(
+    arrowGesturesEnabled,
     activeHandle,
     JSON.stringify([hostId, worktreeId, connState])
   )

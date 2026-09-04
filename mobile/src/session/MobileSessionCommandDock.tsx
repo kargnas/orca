@@ -1,13 +1,5 @@
 import { View, Text, ScrollView, TextInput, Pressable, Platform } from 'react-native'
-import {
-  ArrowUp,
-  ChevronDown,
-  ChevronsRight,
-  Keyboard as KeyboardIcon,
-  Monitor,
-  Plus,
-  Smartphone
-} from 'lucide-react-native'
+import { ArrowUp, ChevronDown, Keyboard as KeyboardIcon, Plus } from 'lucide-react-native'
 import { triggerMediumImpact } from '../platform/haptics'
 import { createTerminalLiveAccessoryInput } from '../terminal/terminal-live-accessory-input'
 import {
@@ -16,7 +8,7 @@ import {
 } from '../terminal/terminal-keyboard-type'
 import { MobileTerminalLiveInputStatus } from './MobileTerminalLiveInputStatus'
 import { MobileTerminalInputActions } from './MobileTerminalInputActions'
-import { isTerminalPhoneDisplayMode } from './mobile-session-route-helpers'
+import { MobileTerminalModeKeys } from './MobileTerminalModeKeys'
 import { colors } from '../theme/mobile-theme'
 import { styles } from './mobile-session-styles'
 import type { MobileSessionController } from './use-mobile-session-controller'
@@ -47,6 +39,8 @@ export function MobileSessionCommandDock({ controller }: { controller: MobileSes
     canSend,
     canCompose,
     liveInputEnabled,
+    arrowGesturesEnabled,
+    toggleArrowGestures,
     focusLiveInput,
     showNativeChat,
     dictation,
@@ -118,57 +112,17 @@ export function MobileSessionCommandDock({ controller }: { controller: MobileSes
             contentContainerStyle={styles.accessoryContent}
             keyboardShouldPersistTaps="always"
           >
-            <Pressable
-              style={({ pressed }) => [
-                styles.accessoryKey,
-                pressed && styles.accessoryKeyPressed,
-                !canSend && styles.accessoryKeyDisabled
-              ]}
-              disabled={!canSend}
-              onPress={() => {
-                if (activeHandle) {
-                  void toggleDisplayMode(activeHandle)
-                }
-              }}
-              accessibilityLabel={
-                isTerminalPhoneDisplayMode(activeHandle, terminalModes)
-                  ? 'Switch to desktop mode'
-                  : 'Switch to phone mode'
-              }
-            >
-              {isTerminalPhoneDisplayMode(activeHandle, terminalModes) ? (
-                <Monitor size={14} color={canSend ? colors.textSecondary : colors.textMuted} />
-              ) : (
-                <Smartphone size={14} color={canSend ? colors.textSecondary : colors.textMuted} />
-              )}
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [
-                styles.accessoryKey,
-                liveInputEnabled && styles.accessoryKeyActive,
-                pressed && styles.accessoryKeyPressed,
-                !canCompose && styles.accessoryKeyDisabled
-              ]}
-              // Why: offline, live mode is dead but the buffered box still composes — keep the escape hatch tappable (#6713).
-              disabled={!canCompose}
-              onPress={toggleLiveInput}
-              accessibilityLabel={
-                liveInputEnabled
-                  ? 'Switch to buffered command input'
-                  : 'Switch to live terminal input'
-              }
-            >
-              <ChevronsRight
-                size={14}
-                color={
-                  liveInputEnabled
-                    ? colors.bgBase
-                    : canCompose
-                      ? colors.textSecondary
-                      : colors.textMuted
-                }
-              />
-            </Pressable>
+            <MobileTerminalModeKeys
+              activeHandle={activeHandle}
+              terminalModes={terminalModes}
+              canSend={canSend}
+              canCompose={canCompose}
+              liveInputEnabled={liveInputEnabled}
+              arrowGesturesEnabled={arrowGesturesEnabled}
+              onToggleDisplayMode={toggleDisplayMode}
+              onToggleLiveInput={toggleLiveInput}
+              onToggleArrowGestures={toggleArrowGestures}
+            />
             {canPaste && (
               <Pressable
                 style={({ pressed }) => [

@@ -1,4 +1,4 @@
-import { TERMINAL_KEYBOARD_SWIPE_JS } from './terminal-webview-keyboard-swipe-injected'
+import { TERMINAL_ARROW_SWIPE_JS } from './terminal-webview-arrow-swipe-injected'
 
 // Document-level latching touch dispatcher, injected into XTERM_HTML. Extracted
 // from terminal-webview-html.ts to keep that file within its max-lines budget.
@@ -11,7 +11,7 @@ export const TERMINAL_TAP_DISPATCH_JS = `
   // LATCHING TOUCH DISPATCHER (document-level)
   // ============================================================
   var dispatch = { mode: 'idle', touchId: null, touchIds: null, swipeSequence: '', swipeDirection: '', swipeOriginX: 0, swipeOriginY: 0, longPressFingerInsideOverlay: false };
-  ${TERMINAL_KEYBOARD_SWIPE_JS}
+  ${TERMINAL_ARROW_SWIPE_JS}
 
   function finishBlockedTouch() {
     dispatch.mode = 'blocked-end';
@@ -62,7 +62,7 @@ export const TERMINAL_TAP_DISPATCH_JS = `
   // Why: existing surface handlers stay attached to surface but we wrap
   // their entry to no-op when the dispatcher latches into select-drag.
   function dispatcherShouldBlockSurface() {
-    return dispatch.mode === 'select-drag' || dispatch.mode === 'keyboard-touch' || dispatch.mode === 'swipe' || dispatch.mode === 'blocked-end';
+    return dispatch.mode === 'select-drag' || dispatch.mode === 'gesture-touch' || dispatch.mode === 'swipe' || dispatch.mode === 'blocked-end';
   }
 
   document.addEventListener('touchstart', function(e) {
@@ -124,8 +124,8 @@ export const TERMINAL_TAP_DISPATCH_JS = `
 
     if (inSurface) {
       var now = Date.now();
-      if (e.touches.length === 1 && keyboardVisible && getMouseTrackingMode() === 'none') {
-        dispatch.mode = 'keyboard-touch';
+      if (e.touches.length === 1 && arrowGesturesEnabled && getMouseTrackingMode() === 'none') {
+        dispatch.mode = 'gesture-touch';
         dispatch.touchId = t.identifier;
         tapCandidate = { x: t.clientX, y: t.clientY, t: now, identifier: t.identifier };
         showSwipeIndicator(t);
@@ -150,14 +150,14 @@ export const TERMINAL_TAP_DISPATCH_JS = `
       handleDragMove(sel.activeHandle, t.clientX, t.clientY);
       return;
     }
-    if (dispatch.mode === 'keyboard-touch' || dispatch.mode === 'swipe') {
+    if (dispatch.mode === 'gesture-touch' || dispatch.mode === 'swipe') {
       var swipeTouch = touchById(e.touches, dispatch.touchId);
       if (!swipeTouch || e.touches.length !== 1) {
-        resetKeyboardSwipe();
+        resetArrowSwipe();
         return;
       }
       if (longPressTimer && touchSlopExceeded(swipeTouch)) clearLongPress();
-      updateKeyboardSwipe(swipeTouch);
+      updateArrowSwipe(swipeTouch);
       e.preventDefault();
       e.stopImmediatePropagation();
       return;
@@ -208,7 +208,7 @@ export const TERMINAL_TAP_DISPATCH_JS = `
       e.stopImmediatePropagation();
       return;
     }
-    if (dispatch.mode === 'keyboard-touch') {
+    if (dispatch.mode === 'gesture-touch') {
       if (e.touches.length === 0 && tapCandidate) {
         if (selMode !== 'select' && Date.now() - tapCandidate.t <= TAP_MAX_MS) {
           notifyTerminalSurfaceTap(tapCandidate.x, tapCandidate.y, true);

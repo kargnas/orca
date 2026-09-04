@@ -136,10 +136,10 @@ export const TERMINAL_HTML_FRAGMENT_05 = `  ${TERMINAL_REFLOW_JS}
     } else if (msg.type === 'reflow') { reflow(msg.cols, msg.rows);
     } else if (msg.type === 'write') {
       write(msg.data);
-    } else if (msg.type === 'keyboard-visible') {
-      keyboardVisible = msg.visible === true;
+    } else if (msg.type === 'arrow-gestures') {
+      arrowGesturesEnabled = msg.enabled === true;
     } else if (msg.type === 'clear') {
-      resetKeyboardSwipe();
+      resetArrowSwipe();
       terminalGeneration++;
       resetWriteQueue(); resumeTerminalDataReplyAuthority(); // Why: clear drops the replay boundary.
       statusDotPendingSelector = false;

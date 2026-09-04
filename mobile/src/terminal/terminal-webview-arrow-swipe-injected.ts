@@ -3,10 +3,10 @@ import {
   TERMINAL_ACCESSORY_REPEAT_INTERVAL_MS
 } from './terminal-accessory-repeat'
 
-// Keyboard-visible swipe state and rendering, injected into the terminal touch dispatcher.
-export const TERMINAL_KEYBOARD_SWIPE_JS = `
+// Arrow-gesture swipe state and rendering, injected into the terminal touch dispatcher.
+export const TERMINAL_ARROW_SWIPE_JS = `
   var swipeRepeatTimer = null;
-  var keyboardVisible = false;
+  var arrowGesturesEnabled = false;
   var swipeIndicator = document.getElementById('terminal-swipe-indicator');
   var swipeOrigin = document.getElementById('terminal-swipe-origin');
   var swipeVector = document.getElementById('terminal-swipe-vector');
@@ -80,7 +80,7 @@ export const TERMINAL_KEYBOARD_SWIPE_JS = `
     ts.accumDelta = 0;
   }
 
-  function updateKeyboardSwipe(t) {
+  function updateArrowSwipe(t) {
     if (selMode === 'select') return;
     var dx = t.clientX - dispatch.swipeOriginX;
     var dy = t.clientY - dispatch.swipeOriginY;
@@ -99,12 +99,12 @@ export const TERMINAL_KEYBOARD_SWIPE_JS = `
     armSwipeRepeat(SWIPE_REPEAT_DELAY_MS);
   }
 
-  function resetKeyboardSwipe() {
+  function resetArrowSwipe() {
     clearSwipeRepeat();
     hideSwipeIndicator();
     dispatch.swipeSequence = '';
     dispatch.swipeDirection = '';
-    if (dispatch.mode === 'keyboard-touch' || dispatch.mode === 'swipe' || dispatch.mode === 'blocked-end') {
+    if (dispatch.mode === 'gesture-touch' || dispatch.mode === 'swipe' || dispatch.mode === 'blocked-end') {
       dispatch.mode = 'idle';
       dispatch.touchId = null;
     }
