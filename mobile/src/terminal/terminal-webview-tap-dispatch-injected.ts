@@ -152,7 +152,9 @@ export const TERMINAL_TAP_DISPATCH_JS = `
     }
     if (dispatch.mode === 'gesture-touch' || dispatch.mode === 'swipe') {
       var swipeTouch = touchById(e.touches, dispatch.touchId);
-      if (!swipeTouch || e.touches.length !== 1) {
+      // Keep the gesture owned by its starting pointer; a second finger must
+      // not cancel an already active arrow swipe.
+      if (!swipeTouch) {
         resetArrowSwipe();
         return;
       }

@@ -485,6 +485,21 @@ describe('terminal WebView tap routing', () => {
     expect(posted.filter((message) => message.type === 'terminal-plain-tap')).toHaveLength(0)
   })
 
+  it('keeps the starting finger active when a second finger appears', async () => {
+    const { posted } = boot('plain prompt')
+    await settle()
+    fireArrowGestures(true)
+    fireTouch('touchstart', [{ x: 100, y: 100 }])
+    fireTouch('touchmove', [
+      { x: 140, y: 100 },
+      { x: 200, y: 200 }
+    ])
+    expect(
+      posted.filter((message) => message.type === 'terminal-input').map((message) => message.bytes)
+    ).toEqual(['\x1b[C'])
+    fireTouch('touchend', [])
+  })
+
   it('repeats only after the swiped finger stays down for 400ms', async () => {
     const { posted } = boot('plain prompt')
     await settle()
