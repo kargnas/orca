@@ -21,6 +21,7 @@ import {
   resolveTerminalCursorInactiveStyle
 } from '@/lib/pane-manager/pane-terminal-options'
 import { getFitOverrideForPty } from '@/lib/pane-manager/mobile-fit-overrides'
+import { isPtyLocked } from '@/lib/pane-manager/mobile-driver-state'
 import { setTerminalCursorBlinkOption } from '@/lib/pane-manager/pane-cursor-blink-suspension'
 import type { PtyTransport } from './pty-transport'
 import type { EffectiveMacOptionAsAlt } from '@/lib/keyboard-layout/detect-option-as-alt'
@@ -163,7 +164,23 @@ export function applyTerminalAppearance(
   for (const pane of manager.getPanes()) {
     // Why value-gated: writing options.theme rebuilds the palette, discarding TUI OSC 4/10/11/12 mutations; skip on no-op change.
     if (theme && !composedTerminalThemesEqual(pane.terminal.options.theme, theme)) {
-      pane.terminal.options.theme = theme
+      const modes = (
+        pane.terminal as unknown as {
+          _core?: { coreService?: { decPrivateModes?: { colorSchemeUpdates?: boolean } } }
+        }
+      )._core?.coreService?.decPrivateModes
+      const colorSchemeUpdates = modes?.colorSchemeUpdates
+      // Orca owns app-mode notifications, including hidden panes; xterm's palette notification would duplicate them.
+      if (modes) {
+        modes.colorSchemeUpdates = false
+      }
+      try {
+        pane.terminal.options.theme = theme
+      } finally {
+        if (modes) {
+          modes.colorSchemeUpdates = colorSchemeUpdates
+        }
+      }
     }
     // Gate off the configured theme background; the live OSC-11 background is deliberately preserved by the
     // theme write above, so a TUI that repaints its background at runtime won't re-gate (known limitation).
@@ -211,10 +228,12 @@ export function applyTerminalAppearance(
     // Why unconditional: the helper no-ops when addon state already matches, so this keeps new panes and live toggles in sync.
     manager.setPaneLigaturesEnabled(pane.id, ligaturesEnabled)
     const transport = paneTransports.get(pane.id)
-    // Why: PTY is already at phone dimensions under a mobile-fit override — don't resize it back to desktop.
     const appearancePtyId = transport?.getPtyId()
-    if (transport?.isConnected() && (!appearancePtyId || !getFitOverrideForPty(appearancePtyId))) {
+    if (transport?.isConnected() && (!appearancePtyId || !isPtyLocked(appearancePtyId))) {
       maybePushMode2031Flip(pane.id, appearance.mode, transport, paneMode2031, paneLastThemeMode)
+    }
+    // Why: PTY is already at phone dimensions under a mobile-fit override — don't resize it back to desktop.
+    if (transport?.isConnected() && (!appearancePtyId || !getFitOverrideForPty(appearancePtyId))) {
       safeFitAndThen(pane, 'appearance-pty-resize', () => {
         const currentTransport = paneTransports.get(pane.id)
         if (
