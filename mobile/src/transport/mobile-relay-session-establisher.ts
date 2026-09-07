@@ -10,6 +10,7 @@ import type { MobileRelayCredentialBundle } from './mobile-relay-credential-bund
 import type { RelayReconnectController } from './mobile-relay-reconnect-controller'
 import type { StableLogicalRpcClient } from './stable-logical-rpc-client'
 import type { MobileRelayEndpoint } from '../../../src/shared/mobile-relay-credential-contract'
+import { RELAY_HOST_CLOSE_REASON } from '../../../src/shared/relay-host-close-reason'
 import type { HostProfile } from './types'
 
 type EstablishResult = { ok: true } | { ok: false; error: Error }
@@ -100,7 +101,17 @@ export class MobileRelaySessionEstablisher {
     const session = args.openRelay(
       relay,
       credential,
-      `confirm-${encodeBase64Url(args.randomBytes(16))}`
+      `confirm-${encodeBase64Url(args.randomBytes(16))}`,
+      // Latched on the logical client, not on the dial result: the close that
+      // carries the reason can land after this dial has already reported its
+      // failure. Clearing is clearAfterConnected's job, so any path that
+      // reaches connected retires it.
+      (reason) => {
+        if (reason === RELAY_HOST_CLOSE_REASON.SIGNED_OUT) {
+          args.logical.setHostSignedOut(true)
+        }
+      },
+      args.isForeground
     )
     try {
       // Why: backgrounding or a direct winner withdraws this dial before cutover.
@@ -115,6 +126,17 @@ export class MobileRelaySessionEstablisher {
         return { ok: false, error: new RelayDialAbortedError() }
       }
       return { ok: false, error: session.getFailure() ?? toError(error) }
+    }
+    // Why: migrateTo now resolves at E2EE authentication, so the resume confirm can
+    // still fail this session after the cutover. Booking a dying session as an
+    // established dial skips backoff and redials in a tight loop — the supervisor's
+    // bookkeeping waits for the verdict even though the UI is already connected.
+    await session.whenResumeConfirmed()
+    if (session.getState() !== 'connected') {
+      if (!args.isActive() || directWon(args.logical)) {
+        return { ok: false, error: new RelayDialAbortedError() }
+      }
+      return { ok: false, error: session.getFailure() ?? new Error('relay lost at confirm') }
     }
     args.controller.setActiveSession(session)
     if (!args.isForeground()) {

@@ -9,29 +9,40 @@ import { MobileE2EEAuthenticationError } from './mobile-e2ee-v2-physical-channel
 import { markRpcDeliveryUnknown } from './rpc-delivery-ambiguity'
 import { openRpcRequestBudget, resolvePostConnectRequestTimeout } from './rpc-request-budget'
 import { isRpcResponse } from './rpc-response-shape'
+import { RelayDialStageTracker, type RelayDialStageSource } from './relay-dial-stage'
+import { RelayPendingRequests } from './relay-pending-requests'
 import { RpcSessionLivenessWatchdog } from './rpc-session-liveness-watchdog'
+import { settleMobileRuntimeCapabilities } from './mobile-runtime-capability-negotiation'
+import type { RelayHostCloseReason } from '../../../src/shared/relay-host-close-reason'
 import type { RpcClient } from './rpc-client'
 import type { ConnectionLogSink, ConnectionState, RpcResponse } from './types'
 
-const RELAY_PROBE_TIMEOUT_MS = 4_000
-const RELAY_MISSED_PROBE_LIMIT = 2
-const RELAY_FOREGROUND_PROBE_MIN_INTERVAL_MS = 10_000
+// Ordinary foreground checks: two 4s misses, at most one voluntary probe per 10s.
+const RELAY_PROBE = { timeoutMs: 4_000, missedProbeLimit: 2, minIntervalMs: 10_000 }
+// A socket that died while the process was suspended must be admitted before the
+// user reads the screen as broken. Two 2s misses, not one: the first frame after a
+// resume rides a cold radio, and a single slow answer is not proof of a dead link.
+const RELAY_RESUME_PROBE = { timeoutMs: 2_000, missedProbeLimit: 2 }
+// Bounds the confirm exactly as migrateTo's own wait used to, so the supervisor's
+// mutex is never held for the full request timeout waiting on a silent cell.
+const RELAY_CONFIRM_TIMEOUT_MS = 12_000
+// Foreground-only sweep so a silently-dead relay surfaces without a user action.
+const RELAY_IDLE_PROBE_MS = 25_000
 let relayRpcSessionSequence = 0
 
-type PendingRequest = {
-  resolve: (response: RpcResponse) => void
-  reject: (error: Error) => void
-  timer: ReturnType<typeof setTimeout>
-}
-
-export type MobileRelayRpcSession = RpcClient & {
-  // The cell's attach-reservation deadline (~10s). Diagnostics only — never
-  // schedule anything from it; rotation keys off getResumeExpiresAt().
-  getAttachDeadlineAt(): number | null
-  getResumeExpiresAt(): number | null
-  getResumeConfirmation(): DeviceResumeConfirmed | null
-  getFailure(): Error | null
-}
+export type MobileRelayRpcSession = RpcClient &
+  RelayDialStageSource & {
+    // The cell's attach-reservation deadline (~10s). Diagnostics only — never
+    // schedule anything from it; rotation keys off getResumeExpiresAt().
+    getAttachDeadlineAt(): number | null
+    getResumeExpiresAt(): number | null
+    getResumeConfirmation(): DeviceResumeConfirmed | null
+    // Settles once the resume confirm has answered or failed the session. Never
+    // rejects. Anyone reading getResumeConfirmation()/getResumeExpiresAt() must
+    // await it: 'connected' is published at authentication, ahead of the confirm.
+    whenResumeConfirmed(): Promise<void>
+    getFailure(): Error | null
+  }
 
 export function connectMobileRelayRpcSession(args: {
   relay: MobileRelayEndpoint
@@ -41,14 +52,16 @@ export function connectMobileRelayRpcSession(args: {
   deviceToken: string
   desktopPublicKeyB64: string
   requestTimeoutMs?: number
+  // Gates the idle liveness sweep; a backgrounded app must not spend probes.
+  isForeground?: () => boolean
   createSocket?: (url: string) => WebSocket
+  onHostCloseReason?: (reason: RelayHostCloseReason) => void
   onLog?: ConnectionLogSink
 }): MobileRelayRpcSession {
   const requestTimeoutMs = args.requestTimeoutMs ?? 30_000
-  const pending = new Map<string, PendingRequest>()
+  const pending = new RelayPendingRequests()
   const stateListeners = new Set<(state: ConnectionState) => void>()
   let state: ConnectionState = 'connecting'
-  let requestCounter = 0
   let lastConnectedAt: number | null = null
   let attachDeadlineAt: number | null = null
   let resumeExpiresAt: number | null = null
@@ -58,8 +71,17 @@ export function connectMobileRelayRpcSession(args: {
   let logSequence = 0
   const logSessionId = `${Date.now().toString(36)}-${(++relayRpcSessionSequence).toString(36)}`
   const livenessIdentity = {}
+  // Why created here and not at authentication: handing a pre-auth caller an
+  // already-resolved promise would let it read getResumeConfirmation() as null and
+  // treat that as the answer. Every terminal path settles it — the confirm, fail(),
+  // and close() — so awaiting it can never outlive the session.
+  let settleResumeConfirmed!: () => void
+  const resumeConfirmed = new Promise<void>((resolve) => {
+    settleResumeConfirmed = resolve
+  })
+  const dialStage = new RelayDialStageTracker()
   const streams = new MobileRelayRpcStreams({
-    nextId,
+    nextId: () => pending.nextId(),
     sendFrame,
     waitForConnected: () => waitForConnected()
   })
@@ -71,6 +93,8 @@ export function connectMobileRelayRpcSession(args: {
     deviceToken: args.deviceToken,
     desktopPublicKeyB64: args.desktopPublicKeyB64,
     createSocket: args.createSocket,
+    onHostCloseReason: args.onHostCloseReason,
+    onOpen: () => dialStage.advance('awaiting-hello'),
     onHello: (hello) => {
       if (
         hello.credentialKind !== 'resume' ||
@@ -81,9 +105,10 @@ export function connectMobileRelayRpcSession(args: {
       }
       attachDeadlineAt = hello.leaseExpiresAt
       resumeExpiresAt = hello.resumeExpiresAt
+      dialStage.advance('handshaking')
       publishState('handshaking')
     },
-    onAuthenticated: () => void confirmResume(),
+    onAuthenticated: () => publishAuthenticated(),
     onText: (plaintext) => {
       livenessWatchdog.noteAuthenticatedInbound(livenessIdentity)
       handleText(plaintext)
@@ -122,33 +147,30 @@ export function connectMobileRelayRpcSession(args: {
     },
     notifyForeground: (reason) => {
       if (state === 'connected' && reason !== 'network-change') {
-        livenessWatchdog.probeNow(livenessIdentity)
+        livenessWatchdog.probeNow(livenessIdentity, reason === 'app-resume' ? 'resume' : 'nudge')
       }
     },
-    close() {
-      if (closed) {
-        return
-      }
-      closed = true
-      livenessWatchdog.stop(livenessIdentity)
-      link.close()
-      rejectPending(new Error('Client closed'))
-      streams.clear()
-      publishState('disconnected')
-    },
+    close: () => terminate(new Error('Client closed')),
+    getDialStage: () => dialStage.getDialStage(),
+    onDialStageChange: (listener) => dialStage.onDialStageChange(listener),
     getAttachDeadlineAt: () => attachDeadlineAt,
     getResumeExpiresAt: () => resumeExpiresAt,
     getResumeConfirmation: () => resumeConfirmation,
+    whenResumeConfirmed: () => resumeConfirmed,
     getFailure: () => failure
   }
   const livenessWatchdog = new RpcSessionLivenessWatchdog({
     transport: 'relay',
-    idleProbeMs: null,
-    probeTimeoutMs: RELAY_PROBE_TIMEOUT_MS,
-    missedProbeLimit: RELAY_MISSED_PROBE_LIMIT,
-    voluntaryProbeMinIntervalMs: RELAY_FOREGROUND_PROBE_MIN_INTERVAL_MS,
+    idleProbeMs: RELAY_IDLE_PROBE_MS,
+    probeTimeoutMs: RELAY_PROBE.timeoutMs,
+    missedProbeLimit: RELAY_PROBE.missedProbeLimit,
+    voluntaryProbeMinIntervalMs: RELAY_PROBE.minIntervalMs,
+    urgentProbeTimeoutMs: RELAY_RESUME_PROBE.timeoutMs,
+    urgentMissedProbeLimit: RELAY_RESUME_PROBE.missedProbeLimit,
+    shouldIdleProbe: () => args.isForeground?.() ?? true,
     sendProbe: () =>
-      state === 'connected' && sendFrame({ id: nextId(), method: 'status.get', params: undefined }),
+      state === 'connected' &&
+      sendFrame({ id: pending.nextId(), method: 'status.get', params: undefined }),
     onTimeout: (evidence) => {
       args.onLog?.({
         id: `relay-liveness-${logSessionId}-${++logSequence}`,
@@ -164,12 +186,33 @@ export function connectMobileRelayRpcSession(args: {
   })
   return client
 
+  // Why: the transport carries traffic the moment E2EE authenticates. The resume
+  // confirm and the capability advisory ride it concurrently instead of putting
+  // two serialized round trips in front of 'connected'.
+  function publishAuthenticated(): void {
+    if (closed) {
+      return
+    }
+    dialStage.advance('confirming')
+    void confirmResume().then(settleResumeConfirmed, settleResumeConfirmed)
+    // Why: an unanswered advisory says nothing, but a frame that never reached the
+    // wire proves the socket cannot carry traffic — that alone still fails.
+    void settleMobileRuntimeCapabilities((method, params) =>
+      sendRpc(method, params, requestTimeoutMs, true)
+    ).catch((error: unknown) => fail(asError(error)))
+    lastConnectedAt = Date.now()
+    livenessWatchdog.start(livenessIdentity)
+    publishState('connected')
+  }
+
+  // Off the critical path but never optional: a failed confirm or a relayHostId
+  // that is not ours still fails the session, only later than it used to.
   async function confirmResume(): Promise<void> {
     try {
       const response = await sendRpc(
         'pairing.getEndpoints',
         { resumeConfirmReqId: args.resumeConfirmReqId },
-        requestTimeoutMs,
+        Math.min(requestTimeoutMs, RELAY_CONFIRM_TIMEOUT_MS),
         true
       )
       if (!response.ok) {
@@ -181,9 +224,6 @@ export function connectMobileRelayRpcSession(args: {
       }
       resumeConfirmation = result.resumeConfirmation
       resumeExpiresAt = result.resumeConfirmation.resumeExpiresAt
-      lastConnectedAt = Date.now()
-      livenessWatchdog.start(livenessIdentity)
-      publishState('connected')
     } catch (error) {
       fail(asError(error))
     }
@@ -198,17 +238,17 @@ export function connectMobileRelayRpcSession(args: {
     if (closed || (!beforeConnected && state !== 'connected')) {
       return Promise.reject(new Error('relay session not connected'))
     }
-    const id = nextId()
+    const id = pending.nextId()
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        pending.delete(id)
+        pending.drop(id)
         // Why: the frame was written long ago — the desktop may have processed it.
         reject(markRpcDeliveryUnknown(new Error(`relay RPC timed out: ${method}`)))
       }, timeoutMs)
-      pending.set(id, { resolve, reject, timer })
+      pending.track(id, { resolve, reject, timer })
       if (!sendFrame({ id, method, params })) {
         clearTimeout(timer)
-        pending.delete(id)
+        pending.drop(id)
         reject(new Error('relay E2EE channel not ready'))
       }
     })
@@ -228,11 +268,7 @@ export function connectMobileRelayRpcSession(args: {
     if (!isRpcResponse(value)) {
       return
     }
-    const request = pending.get(value.id)
-    if (request) {
-      clearTimeout(request.timer)
-      pending.delete(value.id)
-      request.resolve(value)
+    if (pending.settle(value)) {
       return
     }
     streams.handleResponse(value)
@@ -280,35 +316,27 @@ export function connectMobileRelayRpcSession(args: {
     }
   }
 
-  function fail(error: Error): void {
+  // One teardown for both endings; only whether the session is to blame differs, and
+  // recording a failure for a caller's close would make the establisher report a
+  // deliberate teardown as a dial error.
+  function terminate(error: Error): void {
     if (closed) {
       return
     }
     closed = true
-    failure = error
+    settleResumeConfirmed()
     livenessWatchdog.stop(livenessIdentity)
+    streams.clear()
     link.close()
-    rejectPending(error)
+    pending.rejectAll(error)
     publishState(error instanceof MobileE2EEAuthenticationError ? 'auth-failed' : 'disconnected')
   }
 
-  function rejectPending(error: Error): void {
-    if (pending.size === 0) {
-      return
+  function fail(error: Error): void {
+    if (!closed) {
+      failure = error
     }
-    // Why: pending entries only exist after their frame reached the authenticated
-    // link (sendFrame failures delete them synchronously), so the desktop may
-    // have processed them — mark the ambiguity for callers.
-    markRpcDeliveryUnknown(error)
-    for (const request of pending.values()) {
-      clearTimeout(request.timer)
-      request.reject(error)
-    }
-    pending.clear()
-  }
-
-  function nextId(): string {
-    return `relay-rpc-${++requestCounter}-${Date.now()}`
+    terminate(error)
   }
 }
 
