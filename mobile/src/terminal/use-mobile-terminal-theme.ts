@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { useColorScheme } from 'react-native'
-import { DEFAULT_TERMINAL_THEMES } from '../../../src/shared/terminal-default-themes'
+import { DEFAULT_TERMINAL_THEMES } from '../../../src/shared/terminal-themes/defaults'
 import {
   getMobileTerminalThemeMode,
   loadMobileTerminalThemeMode,

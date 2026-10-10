@@ -61,7 +61,7 @@ describe('mobile Android main release workflow', () => {
     const apkName =
       'orca-mobile-${{ steps.release.outputs.version }}-build${{ steps.release.outputs.android_version_code }}-${short_sha}-run${GITHUB_RUN_ID}-attempt${GITHUB_RUN_ATTEMPT}.apk'
 
-    expect(apk?.id).toBe('apk')
+    expect(apk?.id).toBe('apk_name')
     expect(apk?.env?.PRIVATE_MAIN_RELEASE).toBe(
       "${{ github.event_name == 'push' && github.repository == 'kargnas/orca' && github.ref == 'refs/heads/main' }}"
     )
@@ -69,9 +69,10 @@ describe('mobile Android main release workflow', () => {
     expect(apk?.run).toContain('app-release.apk')
     expect(apk?.run).toContain('short_sha="${GITHUB_SHA:0:7}"')
     expect(apk?.run).toContain('GITHUB_RUN_ID')
-    expect(apk?.run).toContain('sha256sum "$apk_name" > "$apk_name.sha256"')
-    expect(apk?.run).toContain('echo "checksum_path=$checksum_path"')
     expect(apk?.run).toContain(apkName)
+    // The checksum step runs after the rename, so its digest names the versioned APK.
+    const steps = androidJob.steps.map((step) => step.name)
+    expect(steps.indexOf('Name release APK')).toBeLessThan(steps.indexOf('Checksum the APK'))
   })
 
   it('pins private main releases to the exact source and never overwrites immutable assets', () => {
@@ -90,7 +91,12 @@ describe('mobile Android main release workflow', () => {
     )
     expect(release?.run).toContain('if [[ "$PRIVATE_MAIN_RELEASE" == "true" ]]')
     expect(release?.run).toContain('--target "$GITHUB_SHA"')
-    const privateReleaseSection = release?.run.split('elif gh release view')[0] ?? ''
+    const privateReleaseSection =
+      release?.run
+        .split('if [[ "$PRIVATE_MAIN_RELEASE" == "true" ]]')[1]
+        ?.split('elif gh release view')[0] ?? ''
+    expect(release?.run).toContain('apk_path="${{ steps.apk_name.outputs.path }}"')
+    expect(release?.run).toContain('checksum_path="${{ steps.apk.outputs.checksum }}"')
     expect(privateReleaseSection).not.toContain('--clobber')
     expect(privateReleaseSection).toContain('"$apk_path" "$checksum_path"')
     expect(release?.run).toContain('gh release upload "$tag"')
@@ -103,7 +109,7 @@ describe('mobile Android main release workflow', () => {
     const release = stepNamed('Create GitHub Release')
 
     expect(apk?.run).toContain('apk_path="android/app/build/outputs/apk/release/app-release.apk"')
-    expect(upload?.with?.path).toBe('mobile/${{ steps.apk.outputs.path }}')
-    expect(release?.run).toContain('${{ steps.apk.outputs.path }}')
+    expect(upload?.with?.path).toContain('mobile/android/app/build/outputs/apk/release/*.apk')
+    expect(release?.run).toContain('android/app/build/outputs/apk/release/*.apk')
   })
 })

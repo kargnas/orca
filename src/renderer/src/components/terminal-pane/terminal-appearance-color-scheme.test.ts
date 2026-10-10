@@ -57,6 +57,7 @@ describe('live terminal appearance color-scheme replies', () => {
     } as unknown as ManagedPane
     const manager = {
       getPanes: () => [pane],
+      setPaneInlineImagesEnabled: vi.fn(),
       setPaneLigaturesEnabled: vi.fn(),
       setPaneStyleOptions: vi.fn()
     } as unknown as PaneManager

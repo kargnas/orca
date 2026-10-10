@@ -1,7 +1,7 @@
 import { createElement, Fragment, type ComponentProps } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_TERMINAL_THEMES } from '../../../src/shared/terminal-default-themes'
+import { DEFAULT_TERMINAL_THEMES } from '../../../src/shared/terminal-themes/defaults'
 import { TerminalPaneView } from '../session/TerminalPaneView'
 import type { MobileTerminalTheme } from './terminal-webview-contract'
 
