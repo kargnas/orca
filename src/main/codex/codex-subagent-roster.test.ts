@@ -1,3 +1,4 @@
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../shared/agent-session-journal-types'
 import { describe, expect, it } from 'vitest'
 import { isAdmissibleAgentJournalItemBody } from '../../shared/agent-session-journal-schemas'
 import type {
@@ -6,7 +7,13 @@ import type {
 } from '../../shared/agent-session-journal-types'
 import { MAX_SUBAGENT_FIELD_CHARS } from '../../shared/native-chat-subagent-summary'
 import { isSubagentGroupBlock, type NativeChatSubagentEntry } from '../../shared/native-chat-types'
-import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
+import {
+  createDeferredStructuredAgentSessionEventSink,
+  type StructuredAgentSessionEventSink,
+  type StructuredAgentSessionEventTarget
+} from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
+import { withJournalQueueMembers } from '../native-chat/agent-session-wire/structured-agent-session-journal-double-test-support'
+import { testEventSinkLogging } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 import {
   CodexSubagentRoster,
   codexSubagentGroupIdentity,
@@ -43,6 +50,7 @@ function createHarness(options: { threadId?: string | null } = {}): {
     tryPublish: () => ({ accepted: true })
   }
   const roster = new CodexSubagentRoster({
+    turnScopeFor: () => AGENT_JOURNAL_THREAD_SCOPE,
     sink,
     primaryThreadId: () => (options.threadId === undefined ? THREAD : options.threadId),
     activeTurn: () => TURN,
@@ -83,46 +91,45 @@ function deliver(
   item: CodexThreadItem,
   turnId: string | null = TURN
 ): void {
+  // The fixture includes the child's owner event separately from its activity metadata.
+  const state =
+    item.kind === 'started'
+      ? 'working'
+      : item.kind === 'completed'
+        ? 'completed'
+        : item.kind === 'interrupted'
+          ? 'stopped'
+          : null
+  if (state && typeof item.agentThreadId === 'string') {
+    roster.handleTurn({
+      threadId: item.agentThreadId,
+      turnId: `execution:${item.agentThreadId}`,
+      state
+    })
+  }
   // Every activity item reaches the wire twice: item/started, then item/completed.
   roster.handleItem({ threadId: THREAD, turnId, item })
   roster.handleItem({ threadId: THREAD, turnId, item })
 }
 
-/**
- * A sink that coalesces the way the real queue does: by `coalescingKey` ALONE,
- * with no op-kind check, and only draining when released. A fake that ignores
- * the key cannot see an append being spliced out by its own publish.
- */
-function createCoalescingHarness(): {
+/** The real event sink, unbound until `drain`, over a journal double that records appends. */
+function createQueuedHarness(): {
   roster: CodexSubagentRoster
   appended: Appended[]
   drain: () => void
 } {
   const appended: Appended[] = []
-  const queue: { key?: string; run: () => void }[] = []
   let clock = 1_000
-  const submit = (key: string | undefined, run: () => void): void => {
-    const at = key === undefined ? -1 : queue.findIndex((queued) => queued.key === key)
-    if (at >= 0) {
-      queue.splice(at, 1)
+  const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
+  const journal = withJournalQueueMembers({
+    appendItem: async (identity: AgentJournalItemIdentity, body: AgentJournalItemBody) => {
+      appended.push({ identity, body })
+      return { cursor: { epoch: 'e', sequence: appended.length } }
     }
-    queue.push(key === undefined ? { run } : { key, run })
-  }
-  const sink: StructuredAgentSessionEventSink = {
-    appendItem: () => {},
-    appendTombstone: () => {},
-    publish: () => {},
-    tryAppendItem: (identity, body, options) => {
-      submit(options?.coalescingKey, () => appended.push({ identity, body }))
-      return { accepted: true }
-    },
-    tryPublish: (options) => {
-      submit(options?.coalescingKey ?? 'publish', () => {})
-      return { accepted: true }
-    }
-  }
+  })
   const roster = new CodexSubagentRoster({
-    sink,
+    turnScopeFor: () => AGENT_JOURNAL_THREAD_SCOPE,
+    sink: deferred.sink,
     primaryThreadId: () => THREAD,
     activeTurn: () => TURN,
     now: () => (clock += 1)
@@ -130,17 +137,19 @@ function createCoalescingHarness(): {
   return {
     roster,
     appended,
-    drain: () => {
-      while (queue.length > 0) {
-        queue.shift()?.run()
-      }
-    }
+    drain: () =>
+      deferred.bind({
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the roster's rows reach only appendItem and the in-order members the helper adds.
+        journal: journal as unknown as StructuredAgentSessionEventTarget['journal'],
+        fence: 1,
+        publish: () => {}
+      })
   }
 }
 
 describe('CodexSubagentRoster', () => {
-  it('does not let its own publish evict the still-queued roster append', () => {
-    const { roster, appended, drain } = createCoalescingHarness()
+  it('lands the roster append its own publish was buffered beside', () => {
+    const { roster, appended, drain } = createQueuedHarness()
 
     deliver(
       roster,
@@ -148,8 +157,8 @@ describe('CodexSubagentRoster', () => {
     )
     drain()
 
-    // Sharing the append's coalescing key with the publish spliced the append
-    // out of the queue, and `lastSerialized` then suppressed every retry.
+    // A publish once shared the append's coalescing key and spliced it out of the queue, and
+    // `lastSerialized` then suppressed every retry.
     expect(appended).toHaveLength(1)
   })
 
@@ -270,7 +279,7 @@ describe('CodexSubagentRoster', () => {
     expect(appended).toHaveLength(1)
   })
 
-  it('rule 2 — a first event of any kind creates the entry in the state it implies', () => {
+  it('registers a child after its owner already reported completion', () => {
     const { roster, agents } = createHarness()
 
     deliver(
@@ -374,7 +383,7 @@ describe('CodexSubagentRoster', () => {
 
     deliver(
       roster,
-      activity({ kind: 'interacted', agentThreadId: 'child-1', agentPath: '/root/read' })
+      activity({ kind: 'started', agentThreadId: 'child-1', agentPath: '/root/read' })
     )
     roster.settleSession()
     const afterFirstSweep = appended.length
@@ -560,10 +569,7 @@ describe('CodexSubagentRoster', () => {
     expect(appended).toHaveLength(atCap)
   })
 
-  // The eviction is the KNOWN LIMITATION the module documents: `groups` is never
-  // seeded from the journal, so the evicted group's next child rebuilds its
-  // durable row from that one child. Pinned so the boundary cannot move silently.
-  it('caps live spawn groups, and an evicted group rebuilds its row from one child', () => {
+  it('retains live spawn groups beyond the settled history budget', () => {
     const { roster, appended, agents } = createHarness()
     for (let index = 0; index <= MAX_CODEX_SUBAGENT_GROUPS; index++) {
       deliver(
@@ -572,10 +578,7 @@ describe('CodexSubagentRoster', () => {
         `turn-${index}`
       )
     }
-    const evicted = codexSubagentGroupIdentity(codexSubagentGroupId(THREAD, 'turn-0'))
-    const rowsFor = (identity: AgentJournalItemIdentity): Appended[] =>
-      appended.filter((entry) => JSON.stringify(entry.identity) === JSON.stringify(identity))
-    expect(rowsFor(evicted)).toHaveLength(1)
+    const original = codexSubagentGroupIdentity(codexSubagentGroupId(THREAD, 'turn-0'))
 
     deliver(
       roster,
@@ -583,8 +586,9 @@ describe('CodexSubagentRoster', () => {
       'turn-0'
     )
 
-    expect(latestIdentity(appended)).toEqual(evicted)
-    expect(agents().map((agent) => agent.id)).toEqual(['child-late'])
+    expect(latestIdentity(appended)).toEqual(original)
+    expect(agents().map((agent) => agent.id)).toEqual(['child-0', 'child-late'])
+    expect(roster.retentionSizes().groups).toBe(MAX_CODEX_SUBAGENT_GROUPS + 1)
   })
 
   it('keeps a token count a later thread-map eviction would otherwise retract', () => {
@@ -652,6 +656,7 @@ describe('CodexSubagentRoster', () => {
       const published: number[] = []
       const refusal = { accepted: false, reason: 'backpressure' } as const
       const roster = new CodexSubagentRoster({
+        turnScopeFor: () => AGENT_JOURNAL_THREAD_SCOPE,
         sink: {
           appendItem: () => {},
           appendTombstone: () => {},
@@ -676,6 +681,7 @@ describe('CodexSubagentRoster', () => {
         now: () => 1_000
       })
       const item = activity({ kind: 'started', agentThreadId: 'child-1', agentPath: '/root/read' })
+      roster.handleTurn({ threadId: 'child-1', turnId: 'child-turn', state: 'working' })
 
       expect(roster.handleItem({ threadId: THREAD, turnId: TURN, item })).toEqual(refusal)
 
@@ -686,8 +692,8 @@ describe('CodexSubagentRoster', () => {
         accepted: true
       })
       // The retry re-appends when the publish was the half that failed; the real
-      // queue coalesces those two by the group key into one journal write. What
-      // must not happen is the revision never being published at all.
+      // sink writes both, as revisions of the one group row. What must not happen
+      // is the revision never being published at all.
       expect(published).toHaveLength(1)
       const body = appended.at(-1)?.body
       expect(
@@ -704,6 +710,7 @@ describe('CodexSubagentRoster', () => {
     const appended: Appended[] = []
     const published: number[] = []
     const roster = new CodexSubagentRoster({
+      turnScopeFor: () => AGENT_JOURNAL_THREAD_SCOPE,
       sink: {
         appendItem: () => {},
         appendTombstone: () => {},
@@ -724,6 +731,7 @@ describe('CodexSubagentRoster', () => {
       activeTurn: () => TURN,
       now: () => 1_000
     })
+    roster.handleTurn({ threadId: 'child-1', turnId: 'child-turn', state: 'working' })
     roster.handleItem({
       threadId: THREAD,
       turnId: TURN,
@@ -747,6 +755,7 @@ describe('CodexSubagentRoster', () => {
 
   it('propagates sink backpressure instead of reporting the row as written', () => {
     const roster = new CodexSubagentRoster({
+      turnScopeFor: () => AGENT_JOURNAL_THREAD_SCOPE,
       sink: {
         appendItem: () => {},
         appendTombstone: () => {},
@@ -758,6 +767,7 @@ describe('CodexSubagentRoster', () => {
       activeTurn: () => TURN
     })
 
+    roster.handleTurn({ threadId: 'child-1', turnId: 'child-turn', state: 'working' })
     expect(
       roster.handleItem({
         threadId: THREAD,

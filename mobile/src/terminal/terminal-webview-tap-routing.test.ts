@@ -4,20 +4,13 @@
 // in-app/phone browser). Regression guard for taps that jitter a few pixels —
 // those were being swallowed because the tap shared the long-press slop gate.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { XTERM_HTML } from './terminal-webview-html'
+import { TERMINAL_DOCUMENT_SCRIPT } from './terminal-webview-document-script.generated'
+import { TERMINAL_DOCUMENT_MARKUP } from './terminal-webview-html'
 
 const bootListenerCleanups: Array<() => void> = []
 
-function iifeSource(): string {
-  const start = XTERM_HTML.indexOf('(function() {')
-  const end = XTERM_HTML.lastIndexOf('})();')
-  return XTERM_HTML.slice(start, end + '})();'.length)
-}
-
 function bodyMarkup(): string {
-  const start = XTERM_HTML.indexOf('<body>') + '<body>'.length
-  const end = XTERM_HTML.indexOf('<script>', start)
-  return XTERM_HTML.slice(start, end)
+  return TERMINAL_DOCUMENT_MARKUP
 }
 
 // Minimal xterm stub: one scrollback line containing a URL, fixed 8x15 cells.
@@ -125,7 +118,8 @@ function boot(
       addDocumentListener(type, listener, options)
     })
   try {
-    new Function(iifeSource())()
+    // The bundle the WebView loads, run as the WebView runs it.
+    new Function(TERMINAL_DOCUMENT_SCRIPT)()
   } finally {
     addWindowListenerSpy.mockRestore()
     addDocumentListenerSpy.mockRestore()
@@ -221,6 +215,11 @@ describe('terminal WebView tap routing', () => {
   it('focuses native input after reporting a touch tap to a mouse-tracking TUI', async () => {
     const { posted } = boot('interactive prompt', undefined, 'drag')
     await settle()
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: JSON.stringify({ type: 'write', data: '\u001b[?1006l' })
+      })
+    )
 
     fireTouch('touchstart', [{ x: 20, y: tapY }])
     fireTouch('touchend', [])
@@ -239,6 +238,11 @@ describe('terminal WebView tap routing', () => {
   it('keeps mouse-tracking TUI swipes in arrow-gesture mode', async () => {
     const { posted } = boot('interactive prompt', undefined, 'drag')
     await settle()
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: JSON.stringify({ type: 'write', data: '\u001b[?1006l' })
+      })
+    )
     fireArrowGestures(true)
     posted.length = 0
 
@@ -253,6 +257,17 @@ describe('terminal WebView tap routing', () => {
     expect(inputs).not.toContain('\x1b[A')
     expect(inputs).not.toContain('\x1b[B')
     expect(document.getElementById('terminal-swipe-indicator')?.hidden).toBe(true)
+  })
+
+  it('focuses native input without mouse bytes while the tracking encoding is unproven', async () => {
+    const { posted } = boot('interactive prompt', undefined, 'drag')
+    await settle()
+
+    fireTouch('touchstart', [{ x: 20, y: tapY }])
+    fireTouch('touchend', [])
+
+    expect(posted.find((message) => message.type === 'terminal-input')).toBeUndefined()
+    expect(posted.filter((message) => message.type === 'terminal-tap')).toHaveLength(1)
   })
 
   it('reports a non-mouse touch tap without terminal mouse bytes', async () => {

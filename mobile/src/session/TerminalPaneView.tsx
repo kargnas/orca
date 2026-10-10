@@ -32,6 +32,7 @@ type TerminalPaneViewProps = {
   onFileTap: (handle: string, pathText: string, line: number | null, column: number | null) => void
   onOpenUrl: (handle: string, url: string) => void
   onTextScaleChange: (scale: number) => void
+  onCellBoxChange: (handle: string) => void
 }
 
 /** Updates appearance in place so theme changes preserve terminal state, including hidden panes. */
@@ -57,7 +58,8 @@ export function TerminalPaneView({
   onTerminalPlainTapCancelled,
   onFileTap,
   onOpenUrl,
-  onTextScaleChange
+  onTextScaleChange,
+  onCellBoxChange
 }: TerminalPaneViewProps) {
   const resolvedTheme = useMobileTerminalTheme(terminalTheme)
   const setRef = useCallback(
@@ -84,6 +86,7 @@ export function TerminalPaneView({
         terminalTheme={resolvedTheme}
         arrowGesturesEnabled={arrowGesturesEnabled}
         textScale={textScale}
+        shownAtMount={active}
         onWebReady={() => onWebReady(handle)}
         onSelectionMode={(a) => onSelectionMode(handle, a)}
         onSelectionCopy={(t) => onSelectionCopy(handle, t)}
@@ -99,6 +102,7 @@ export function TerminalPaneView({
         onFileTap={(pathText, line, column) => onFileTap(handle, pathText, line, column)}
         onOpenUrl={(url) => onOpenUrl(handle, url)}
         onTextScaleChange={onTextScaleChange}
+        onCellBoxChange={() => onCellBoxChange(handle)}
       />
     </View>
   )

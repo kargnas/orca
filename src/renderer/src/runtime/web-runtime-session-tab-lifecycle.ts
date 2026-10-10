@@ -28,6 +28,10 @@ export async function activateWebRuntimeSessionTab(args: {
   worktreeId: string
   tabId: string
   environmentId?: string | null
+  /** The split pane the user picked; without it the host and focus intent pick the first. */
+  leafId?: string | null
+  /** The local tab visible at the gesture; later navigation away cancels the deferred focus. */
+  expectedCurrentLocalTabId?: string | null
 }): Promise<boolean> {
   return (await callWebRuntimeSessionTabMethod('session.tabs.activate', args)) === 'applied'
 }
@@ -60,6 +64,8 @@ async function callWebRuntimeSessionTabMethod(
     reason?: RuntimeSessionTabCloseReason
     publicationEpoch?: string | null
     terminalHandle?: string | null
+    leafId?: string | null
+    expectedCurrentLocalTabId?: string | null
   }
 ): Promise<WebRuntimeSessionTabCloseOutcome> {
   const environmentId =
@@ -110,7 +116,13 @@ async function callWebRuntimeSessionTabMethod(
       recordWebSessionCloseIntent(intentOwner, args.worktreeId, hostTabId, Date.now())
     } else {
       activationHostTabId = hostTabId
-      recordWebSessionFocusIntent(intentOwner, args.worktreeId, hostTabId)
+      recordWebSessionFocusIntent(
+        intentOwner,
+        args.worktreeId,
+        hostTabId,
+        args.leafId ?? undefined,
+        args.expectedCurrentLocalTabId
+      )
     }
     const response = await callEnvironment({
       // Why: old hosts cannot route this additive method, so a generation
@@ -121,6 +133,7 @@ async function callWebRuntimeSessionTabMethod(
         tabId: hostTabId,
         ...(method === 'session.tabs.activate'
           ? {
+              ...(args.leafId ? { leafId: args.leafId } : {}),
               // Why: the additive navigation target protects new hosts while notifyClients:false protects old hosts.
               notifyClients: false,
               navigation: 'caller' as const,
@@ -162,10 +175,15 @@ async function callWebRuntimeSessionTabMethod(
     if (activationHostTabId) {
       clearWebSessionFocusIntentIfMatches(intentOwner, args.worktreeId, activationHostTabId)
     }
-    // Why the split: only 'tab_not_found' is absence proof (see the outcome doc above). Restoring the
-    // mirror on it hands the user back a pane the host cannot close and whose handle is already gone
-    // (#9194), so keep the suppression and drop its TTL instead. Every other failure is a "not now".
-    const hostHasNoSuchTab = hasRuntimeRpcErrorCode(error, 'tab_not_found')
+    // Why the split: 'tab_not_found' and 'terminal_tab_not_found' prove definitive surface absence.
+    // Restoring the mirror on it hands the user back a pane the host cannot close and whose handle is already gone (#9194, #21189),
+    // so keep the suppression and drop its TTL instead.
+    // 'selector_not_found' is a transient worktree resolver state (e.g. during scans or cache warm-up,
+    // per remote-browser-stream-errors.ts) and must not become a durable close tombstone.
+    // Every other failure is a "not now".
+    const hostHasNoSuchTab =
+      hasRuntimeRpcErrorCode(error, 'tab_not_found') ||
+      hasRuntimeRpcErrorCode(error, 'terminal_tab_not_found')
     for (const hostTabId of closeIntentTabIds) {
       if (hostHasNoSuchTab) {
         makeWebSessionCloseIntentDurable(intentOwner, args.worktreeId, hostTabId)
