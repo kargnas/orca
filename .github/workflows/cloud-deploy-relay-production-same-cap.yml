@@ -101,7 +101,7 @@ jobs:
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
-        with: { node-version: 24 }
+        with: { node-version: 24.22.1 }
 
       - id: wave
         env:
@@ -263,7 +263,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
-        with: { node-version: 24 }
+        with: { node-version: 24.22.1 }
 
       - name: Seal exact successful canary authority
         run: |

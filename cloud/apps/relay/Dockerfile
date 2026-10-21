@@ -1,4 +1,4 @@
-FROM node:24-alpine AS build
+FROM node:24.22.1-alpine AS build
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
@@ -9,7 +9,7 @@ COPY packages/relay-contract packages/relay-contract
 COPY apps/relay apps/relay
 RUN pnpm --filter @orca-cloud/relay-contract build && pnpm --filter @orca-cloud/relay build
 
-FROM node:24-alpine AS runtime
+FROM node:24.22.1-alpine AS runtime
 ENV NODE_ENV=production
 ENV PORT=8080
 WORKDIR /app

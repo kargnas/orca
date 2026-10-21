@@ -28,10 +28,10 @@ jobs:
       - uses: ./.github/actions/install-node-dependencies
         with:
           native-runtime: node
-          node-version: '26'
+          node-version: '26.12.1'
 
   test:
     needs: [test_native_cache]
     uses: ./.github/workflows/unit-tests.yml
     with:
-      node_versions: '["26"]'
+      node_versions: '["26.12.1"]'

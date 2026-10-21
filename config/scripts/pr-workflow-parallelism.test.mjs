@@ -64,9 +64,9 @@ describe('PR workflow parallelism', () => {
     )
 
     expect(workflow.jobs.test.uses).toBe('./.github/workflows/unit-tests.yml')
-    expect(JSON.parse(workflow.jobs.test.with.node_versions)).toEqual(['24'])
+    expect(JSON.parse(workflow.jobs.test.with.node_versions)).toEqual(['24.22.1'])
     expect(nodeNextWorkflow.jobs.test.uses).toBe('./.github/workflows/unit-tests.yml')
-    expect(JSON.parse(nodeNextWorkflow.jobs.test.with.node_versions)).toEqual(['26'])
+    expect(JSON.parse(nodeNextWorkflow.jobs.test.with.node_versions)).toEqual(['26.12.1'])
     expect(nodeNextWorkflow.on.schedule).toHaveLength(1)
     expect(nodeNextWorkflow.on.workflow_dispatch).toBeNull()
     expect(sharedTest.strategy.matrix.node).toBe('${{ fromJSON(inputs.node_versions) }}')
@@ -81,10 +81,10 @@ describe('PR workflow parallelism', () => {
       expect(testStep.run).toContain(`--exclude=${testFile}`)
     }
     expect(primerInstall.with['native-runtime']).toBe('node')
-    expect(primerInstall.with['node-version']).toBe('24')
+    expect(primerInstall.with['node-version']).toBe('24.22.1')
     expect(workflow.jobs.test.needs).toContain('test_native_cache')
     expect(nodeNextPrimerInstall.with['native-runtime']).toBe('node')
-    expect(nodeNextPrimerInstall.with['node-version']).toBe('26')
+    expect(nodeNextPrimerInstall.with['node-version']).toBe('26.12.1')
     expect(nodeNextWorkflow.jobs.test.needs).toEqual(['test_native_cache'])
   })
 
