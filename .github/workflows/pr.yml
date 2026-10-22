@@ -644,6 +644,37 @@ jobs:
           filter: blob:none
           persist-credentials: false
 
+      # Why: this fork does not publish desktop release tags. The harness checks
+      # out v1.4.184, v1.4.190, and the newest stable tag from the upstream repo.
+      - name: Fetch upstream desktop release tags
+        run: |
+          set -euo pipefail
+          if git rev-parse --verify --quiet 'v1.4.190^{commit}' >/dev/null \
+            && git rev-parse --verify --quiet 'v1.4.184^{commit}' >/dev/null; then
+            echo "Desktop release tags already present."
+            exit 0
+          fi
+          git remote add upstream https://github.com/stablyai/orca.git
+          latest="$(
+            git ls-remote --tags https://github.com/stablyai/orca.git 'refs/tags/v*' \
+              | awk -F/ '{print $NF}' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V \
+              | tail -1
+          )"
+          test -n "$latest"
+          echo "Fetching v1.4.184, v1.4.190, and ${latest}"
+          refs=(
+            'refs/tags/v1.4.184:refs/tags/v1.4.184'
+            'refs/tags/v1.4.190:refs/tags/v1.4.190'
+          )
+          if [ "$latest" != 'v1.4.184' ] && [ "$latest" != 'v1.4.190' ]; then
+            refs+=("refs/tags/${latest}:refs/tags/${latest}")
+          fi
+          # Why no --depth: a depth-limited fetch marks the whole checkout shallow
+          # and hides merge history the harness reads from HEAD.
+          git fetch --filter=blob:none upstream "${refs[@]}"
+
       - uses: ./.github/actions/install-node-dependencies
         with:
           native-runtime: node

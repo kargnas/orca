@@ -25,19 +25,27 @@ const assertEngines = (path, expected) => {
 
 const classify = (specifier, where) => {
   const value = specifier.trim().replace(/^['"]|['"]$/g, '')
-  if (value.includes('${{')) return
+  if (value.includes('${{')) {
+    return
+  }
   if (patched.has(value)) {
     patchedHits += 1
     return
   }
-  if (value === '18' || value.startsWith('18.')) return
-  if (/^(22|24|26)(\.|$)/.test(value)) note(`${where}: Node ${value} is not a patched release`)
+  if (value === '18' || value.startsWith('18.')) {
+    return
+  }
+  if (/^(22|24|26)(\.|$)/.test(value)) {
+    note(`${where}: Node ${value} is not a patched release`)
+  }
 }
 
 const scanWorkflow = (path, text) => {
   for (const match of text.matchAll(/node-version:\s*([^\n#]+)/g)) {
     const raw = match[1].trim()
-    if (raw.includes('${{')) continue
+    if (raw.includes('${{')) {
+      continue
+    }
     const specifier = raw.split(/\s+/)[0].replace(/[},]+$/g, '')
     classify(specifier, `${path} node-version`)
   }
@@ -53,15 +61,18 @@ const scanWorkflow = (path, text) => {
       note(`${path}: node_versions is not a list`)
       continue
     }
-    for (const version of versions) classify(String(version), `${path} node_versions`)
+    for (const version of versions) {
+      classify(String(version), `${path} node_versions`)
+    }
   }
 }
 
 const walkYml = (dir) => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name)
-    if (entry.isDirectory()) walkYml(path)
-    else if (entry.name.endsWith('.yml') || entry.name.endsWith('.yaml')) {
+    if (entry.isDirectory()) {
+      walkYml(path)
+    } else if (entry.name.endsWith('.yml') || entry.name.endsWith('.yaml')) {
       scanWorkflow(path, read(path))
     }
   }
@@ -78,8 +89,11 @@ assertEngines('docs/site/package.json', '22.23.4')
 assertEngines('cloud/package.json', '24.22.1 || 26.12.1')
 
 const nodeVersionFile = read('cloud/.node-version').trim()
-if (nodeVersionFile !== '24.22.1') note(`cloud/.node-version is ${nodeVersionFile}`)
-else patchedHits += 1
+if (nodeVersionFile !== '24.22.1') {
+  note(`cloud/.node-version is ${nodeVersionFile}`)
+} else {
+  patchedHits += 1
+}
 
 walkYml('.github')
 for (const path of [
@@ -95,13 +109,21 @@ const setupScript = read('.github/actions/setup-wsl-test-runtime/setup.ps1')
 const distUrls = [...setupScript.matchAll(/nodejs\.org\/dist\/v(\d+\.\d+\.\d+)\//g)].map(
   (match) => match[1]
 )
-if (!distUrls.includes('22.23.4')) note('WSL setup is missing the Node 22.23.4 tarball')
-for (const version of distUrls) classify(version, 'setup.ps1 nodejs.org')
+if (!distUrls.includes('22.23.4')) {
+  note('WSL setup is missing the Node 22.23.4 tarball')
+}
+for (const version of distUrls) {
+  classify(version, 'setup.ps1 nodejs.org')
+}
 
-if (patchedHits < 20) note(`only ${patchedHits} patched Node pins found`)
+if (patchedHits < 20) {
+  note(`only ${patchedHits} patched Node pins found`)
+}
 
 if (failures.length > 0) {
-  for (const failure of failures) console.error(failure)
+  for (const failure of failures) {
+    console.error(failure)
+  }
   process.exit(1)
 }
 
