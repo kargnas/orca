@@ -24,6 +24,18 @@ const describeOnWindows = process.platform === 'win32' ? describe : describe.ski
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
+async function waitUntilExited(pid: number): Promise<void> {
+  // terminatePtyJob reports once the job is signaled; the pid can still be
+  // alive until Windows reaps it.
+  const deadline = Date.now() + 8_000
+  while (Date.now() < deadline) {
+    if (!isAlive(pid)) {
+      return
+    }
+    await sleep(200)
+  }
+}
+
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)
@@ -108,7 +120,8 @@ describeOnWindows('ConPTY job ownership', () => {
     expect(isAlive(grandchildPid)).toBe(true)
 
     expect(terminatePtyJob(proc)).toBe('terminated')
-    await sleep(1_500)
+    await waitUntilExited(proc.pid)
+    await waitUntilExited(grandchildPid)
 
     expect(isAlive(proc.pid)).toBe(false)
     expect(isAlive(grandchildPid)).toBe(false)

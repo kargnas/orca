@@ -323,6 +323,24 @@ jobs:
 
       - name: Verify Git binary compatibility matrix
         run: |
+          # Registry 500s while resolving alpine/git are transient. Pull first so
+          # the matrix does not fail before Git itself runs.
+          pull_git_image() {
+            local image="$1"
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if docker pull "$image"; then
+                return 0
+              fi
+              echo "docker pull ${image} failed (attempt ${attempt})" >&2
+              sleep $((attempt * 5))
+            done
+            echo "docker pull ${image} failed" >&2
+            return 1
+          }
+          pull_git_image alpine/git:edge-2.38.1
+          pull_git_image alpine/git:v2.49.1
+
           pids=()
           (
             archive="$RUNNER_TEMP/git-2.25.5.tar.gz"
